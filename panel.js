@@ -268,17 +268,27 @@ function setRunning(on) {
   poller = on ? setInterval(pollProgress, 400) : null;
 }
 
+// Each browser tab has its own page worker, and that worker is the authority on
+// whether a run is going. The panel shows one tab at a time, so the run state on
+// screen must come from whichever tab is showing - never from a run started
+// somewhere else.
+function applyRunState(res) {
+  const p = res.progress;
+  if (res.busy) {
+    if (!running) setRunning(true);
+    showBusy(true, p ? `${p.phase} criterion ${p.index} of ${p.total}…` : 'Working…');
+    if (p) setStatus(`${p.phase} ${p.index}/${p.total}…`);
+  } else {
+    if (running) setRunning(false);
+    showBusy(false);
+  }
+}
+
 async function pollProgress() {
   try {
     const res = await send({ type: 'PING' });
     updateBadge(res);
-    if (res.busy && res.progress) {
-      const p = res.progress;
-      setStatus(`${p.phase} ${p.index}/${p.total}…`);
-      showBusy(true, `${p.phase} criterion ${p.index} of ${p.total}…`);
-    } else if (!res.busy && running) {
-      setRunning(false); // finished while the popup was closed
-    }
+    applyRunState(res);
   } catch { /* page navigating; the next tick retries */ }
 }
 
@@ -299,6 +309,7 @@ applyBtn.addEventListener('click', async () => {
 
   const speed = Number($('speed').value);
   const verbing = $('entry').value === 'type' ? 'Typing' : 'Pasting';
+  const ranOn = sessionTabId; // the run belongs to this browser tab alone
   showTab('tabInput');
   setRunning(true);
   setStatus(`${verbing}…`);
@@ -324,13 +335,17 @@ applyBtn.addEventListener('click', async () => {
 
     const clean = result.filled === result.requested
       && !result.skippedFields.length && !result.truncated.length;
-    setStatus(msg, clean ? 'ok' : '');
+    if (sessionTabId === ranOn) setStatus(msg, clean ? 'ok' : '');
   } catch (e) {
-    setStatus(e.message, e.message === 'Stopped.' ? '' : 'err');
+    if (sessionTabId === ranOn) setStatus(e.message, e.message === 'Stopped.' ? '' : 'err');
   } finally {
-    showBusy(false);
-    setRunning(false);
-    refresh();
+    // If the user moved to another tab meanwhile, that tab's view is not ours
+    // to clear - it is showing its own state.
+    if (sessionTabId === ranOn) {
+      showBusy(false);
+      setRunning(false);
+      refresh();
+    }
   }
 });
 
@@ -443,6 +458,7 @@ async function loadSession(tabId) {
 
   showSkeleton(false);
   setRunning(false);
+  showBusy(false); // a run belongs to the tab that started it, not to this view
   setStatus('');
   // Last, because showTab saves: everything above must already be this tab's.
   showTab(s.tab || 'tabCatch');
@@ -458,8 +474,9 @@ async function refresh() {
   try {
     const res = await send({ type: 'PING' });
     updateBadge(res);
-    // A run started before the panel was last closed may still be going.
-    if (res.busy && !running) setRunning(true);
+    // Picks up a run this tab started earlier, and clears the display of one
+    // belonging to a tab we have just switched away from.
+    applyRunState(res);
   } catch {
     $('pageInfo').textContent = 'page not ready';
   }
