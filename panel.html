@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="panel.css">
+  <title>Criteria Catcher</title>
+</head>
+<body>
+  <div class="top">
+    <header>
+      <h1>Criteria Catcher</h1>
+      <span id="pageInfo" class="badge">checking…</span>
+    </header>
+
+    <div class="modes" role="radiogroup" aria-label="Page type">
+      <label><input type="radio" name="mode" value="submission"><span>Submission</span></label>
+      <label><input type="radio" name="mode" value="review"><span>Review</span></label>
+      <label><input type="radio" name="mode" value="refinement"><span>Refinement</span></label>
+    </div>
+    <p id="modeHint" class="hint"></p>
+
+    <button id="catch" class="primary">Catch criteria</button>
+  </div>
+
+  <div class="scroll">
+    <section id="result" class="result" hidden>
+      <div class="part" id="uidPart" role="button" tabindex="0" title="Click to copy the UID">
+        <div class="part-head">
+          <span>UID</span>
+          <span class="copy-icon" aria-hidden="true">
+            <svg width="13" height="13" viewBox="0 0 256 256" fill="currentColor"><path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z"></path></svg>
+          </span>
+        </div>
+        <div class="part-body mono" id="uidValue"></div>
+      </div>
+
+      <div class="part" id="contentPart" role="button" tabindex="0" title="Click to copy the content">
+        <div class="part-head">
+          <span>Content</span>
+          <span class="copy-icon" aria-hidden="true">
+            <svg width="13" height="13" viewBox="0 0 256 256" fill="currentColor"><path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z"></path></svg>
+          </span>
+        </div>
+        <pre class="part-body scroll-y" id="contentValue"></pre>
+      </div>
+
+      <div class="links">
+        <button id="copyJson" class="link">Copy JSON</button>
+        <button id="download" class="link">Download JSON</button>
+        <button id="toInput" class="link">Send criteria to input</button>
+      </div>
+    </section>
+
+    <h2 class="section-title">Input — paste criteria JSON here</h2>
+
+    <textarea id="json" spellcheck="false" placeholder='Paste or upload JSON like this:
+
+{
+  "criteria": [
+    { "1": "Criterion text, at least 20 characters.", "weight": 2 },
+    { "2": "A failure mode carries a negative weight.", "weight": -3 }
+  ]
+}
+
+"criterion" works in place of the number. Order decides
+which section each row goes to.'></textarea>
+
+    <div class="links">
+      <button id="loadFile" class="link">Open file…</button>
+      <button id="format" class="link">Format</button>
+      <button id="clear" class="link">Clear</button>
+    </div>
+  </div>
+
+  <div class="bottom">
+    <div class="options">
+      <label>
+        Entry
+        <select id="entry">
+          <option value="paste" selected>Paste per field</option>
+          <option value="type">Type per key</option>
+        </select>
+      </label>
+      <label>
+        Pace
+        <select id="speed">
+          <option value="6">Fast</option>
+          <option value="22" selected>Human</option>
+          <option value="55">Careful</option>
+        </select>
+      </label>
+    </div>
+    <label class="check">
+      <input type="checkbox" id="removeExtras" checked>
+      Add or delete sections to match the JSON
+    </label>
+
+    <button id="apply" class="primary">Type into page</button>
+    <p id="status" class="status"></p>
+  </div>
+
+  <input type="file" id="file" accept=".json,application/json" hidden>
+</body>
+<script src="panel.js"></script>
+</html>
