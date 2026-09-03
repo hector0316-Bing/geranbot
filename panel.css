@@ -54,19 +54,51 @@ body {
 .top {
   flex: 0 0 auto;
   padding: 12px 12px 10px;
-  border-bottom: 1px solid var(--line);
 }
 
-.scroll {
+/* Only the open tab scrolls. Nothing inside it scrolls on its own, so there is
+   never a scrollbar inside a scrollbar. */
+.view {
   flex: 1 1 auto;
   min-height: 0;
   padding: 10px 12px;
   overflow-y: auto;
 }
 
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--field);
+}
+
+button.tab {
+  flex: 1;
+  padding: 7px 4px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease;
+}
+
+button.tab:hover { color: var(--fg); }
+
+button.tab[aria-selected="true"] {
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+}
+
+button.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
 .bottom {
   flex: 0 0 auto;
-  padding: 10px 12px 12px;
+  padding: 8px 12px 10px;
   border-top: 1px solid var(--line);
   background: var(--bg);
 }
@@ -135,8 +167,6 @@ h1 {
 
 .section-title {
   margin: 16px 0 6px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: 11px;
   font-weight: 600;
@@ -191,11 +221,6 @@ h1 {
   font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-.part-body.scroll-y {
-  max-height: 45vh;
-  overflow-y: auto;
 }
 
 button.primary {
@@ -277,7 +302,7 @@ button.link {
 button.link:hover { color: var(--fg); background: var(--field); }
 
 .status {
-  margin: 6px 0 0;
+  margin: 0;
   min-height: 2.6em;
   color: var(--muted);
   white-space: pre-wrap;
@@ -371,4 +396,26 @@ button.link:hover { color: var(--fg); background: var(--field); }
   .sk, .pulse span { animation-duration: 0.01ms; animation-iteration-count: 1; }
   .sk { background: var(--line); }
   .pulse span { opacity: .6; transform: none; }
+}
+
+/* The Catch controls stay put while the caught text scrolls under them. */
+.catch-head {
+  position: sticky;
+  top: -10px;
+  z-index: 2;
+  padding: 10px 0 8px;
+  margin-top: -10px;
+  background: var(--bg);
+}
+
+/* The Input tab has nothing to scroll, so let the box take the room. */
+#viewInput {
+  display: flex;
+  flex-direction: column;
+}
+
+#viewInput textarea {
+  flex: 1 1 auto;
+  min-height: 200px;
+  height: auto;
 }

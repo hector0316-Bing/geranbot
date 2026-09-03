@@ -24,6 +24,29 @@ function showBusy(on, text) {
   document.querySelector('.bottom').classList.toggle('locked', on);
 }
 
+/* ---------- tabs ----------
+   Catching and filling are separate jobs, and each view owns the full height,
+   so the open tab is the only thing that scrolls. */
+
+const TABS = [['tabCatch', 'viewCatch'], ['tabInput', 'viewInput']];
+
+function showTab(which) {
+  for (const [tabId, viewId] of TABS) {
+    const on = tabId === which;
+    $(tabId).setAttribute('aria-selected', String(on));
+    $(viewId).hidden = !on;
+  }
+  save();
+}
+
+function activeTabId() {
+  return TABS.find(([tabId]) => $(tabId).getAttribute('aria-selected') === 'true')?.[0] || 'tabCatch';
+}
+
+for (const [tabId] of TABS) {
+  $(tabId).addEventListener('click', () => showTab(tabId));
+}
+
 const modeRadios = Array.from(document.querySelectorAll('input[name="mode"]'));
 
 function selectedMode() {
@@ -203,6 +226,7 @@ for (const r of modeRadios) {
 
 catchBtn.addEventListener('click', async () => {
   setStatus('Reading page…');
+  showTab('tabCatch');
   showSkeleton(true);
   try {
     const { data, meta } = await send({ type: 'EXTRACT', options: { mode: selectedMode() } });
@@ -275,6 +299,7 @@ applyBtn.addEventListener('click', async () => {
 
   const speed = Number($('speed').value);
   const verbing = $('entry').value === 'type' ? 'Typing' : 'Pasting';
+  showTab('tabInput');
   setRunning(true);
   setStatus(`${verbing}…`);
   showBusy(true, `${verbing} into the page…`);
@@ -283,7 +308,12 @@ applyBtn.addEventListener('click', async () => {
     const { result } = await send({
       type: 'APPLY',
       data: parsed,
-      options: { speed, entry: $('entry').value, removeExtras: $('removeExtras').checked }
+      options: {
+        speed,
+        entry: $('entry').value,
+        gap: Number($('gap').value),
+        removeExtras: $('removeExtras').checked
+      }
     });
 
     const verb = $('entry').value === 'type' ? 'Typed' : 'Pasted';
@@ -332,6 +362,7 @@ $('toInput').addEventListener('click', () => {
   const rows = caught.criteria.map((c, i) => ({ [i + 1]: c.criterion, weight: c.weight }));
   editor.value = JSON.stringify({ criteria: rows }, null, 2);
   save();
+  showTab('tabInput');
   setStatus('Criteria copied into the input box.', 'ok');
 });
 
@@ -379,6 +410,8 @@ function save() {
       json: editor.value,
       speed: $('speed').value,
       entry: $('entry').value,
+      gap: $('gap').value,
+      tab: activeTabId(),
       removeExtras: $('removeExtras').checked,
       mode: selectedMode(),
       caught
@@ -396,6 +429,7 @@ async function loadSession(tabId) {
   editor.value = s.json || '';
   $('speed').value = s.speed || '22';
   $('entry').value = s.entry || 'paste';
+  $('gap').value = s.gap || '2000';
   $('removeExtras').checked = s.removeExtras !== false;
   setMode(s.mode || null);
   $('modeHint').textContent = '';
@@ -410,10 +444,13 @@ async function loadSession(tabId) {
   showSkeleton(false);
   setRunning(false);
   setStatus('');
+  // Last, because showTab saves: everything above must already be this tab's.
+  showTab(s.tab || 'tabCatch');
 }
 
 editor.addEventListener('input', save);
 $('speed').addEventListener('change', save);
+$('gap').addEventListener('change', save);
 $('entry').addEventListener('change', () => { save(); if (!running) setRunning(false); });
 $('removeExtras').addEventListener('change', save);
 

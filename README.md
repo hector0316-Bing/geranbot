@@ -110,8 +110,13 @@ once. Whatever is already in a field is cleared first.
 Either way the page's own validation, character counter and autosave fire
 exactly as they do for a person.
 
-**Pace** — Fast, Human (default), Careful. It sets the keystroke interval when
-typing and the pause between fields when pasting.
+**Pace** sets the keystroke rhythm when typing. **Gap** sets how long it waits
+after each field before moving to the next — 0.5s, 1s, **2s (default)** or 4s —
+so the page has time to validate, autosave and settle between entries.
+
+The gap is what governs how long a run takes: roughly (criteria x 2 fields) x
+gap. Thirty criteria at the 2s default is about two minutes. Stop takes effect
+within a tenth of a second even mid-gap.
 
 While it runs the button turns into **Stop** and the status line shows
 `typing 4/12…`. You can close the panel; the run continues, and reopening it
@@ -127,6 +132,23 @@ needed, not all up front.
 **Remove extra sections** (on by default) deletes trailing sections when the JSON
 has fewer entries than the page, using each section's own "Delete section"
 button. Untick it to leave the spares alone.
+
+## Two tabs
+
+The panel has a **Catch** tab and an **Input** tab. Each owns the full height, so
+only one region ever scrolls - the caught text and the input box no longer sit in
+nested scrollers competing for the same wheel.
+
+- **Catch** holds the page-type radios, the Catch button and the two result
+  boxes. The radios and button stay pinned while the caught text scrolls under
+  them.
+- **Input** holds the JSON box, which grows to fill the panel, with the entry
+  options and the action button beneath it.
+
+The panel follows the job: catching switches to Catch, starting a fill switches
+to Input, and **Send criteria to input** carries you across with the JSON. The
+open tab is remembered per browser tab along with the rest of the session, and
+the status line sits below both.
 
 ## The result panel
 

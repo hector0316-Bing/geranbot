@@ -27,6 +27,16 @@
     if (cancelled) throw new Error('Stopped.');
   }
 
+  // A long wait in one piece would leave Stop unresponsive for its whole length,
+  // so sit out the gap in slices and check between them.
+  async function pause(ms) {
+    for (let left = ms; left > 0; left -= 100) {
+      checkCancelled();
+      await wait(Math.min(100, left));
+    }
+    checkCancelled();
+  }
+
   function getContainer() {
     const el = document.querySelector(CONTAINER);
     if (el) return el;
@@ -767,6 +777,7 @@
 
     const base = Math.max(0, Number(options.speed ?? 22));
     const paste = options.entry !== 'type'; // paste per field unless asked to type
+    const gap = Math.max(0, Number(options.gap ?? 2000)); // pause after each field
     busy = true;
     cancelled = false;
     progress = { index: 0, total: rows.length, phase: 'starting' };
@@ -827,10 +838,9 @@
               : await typeInto(ctl, value, base);
             if (r.truncated) truncated.push(`#${i + 1} "${key}"`);
           }
-          await wait(base * (paste ? 8 : 3)); // a beat before the next field
+          await pause(gap); // settle before moving to the next field
         }
         filled++;
-        if (i < rows.length - 1) await wait(base * (paste ? 7 : 2));
       }
     } finally {
       busy = false;
