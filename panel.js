@@ -285,8 +285,11 @@ function applyRunState(res) {
 }
 
 async function pollProgress() {
+  const asked = sessionTabId;
   try {
     const res = await send({ type: 'PING' });
+    // A reply about the tab we have just left must not paint this one.
+    if (sessionTabId !== asked) return;
     updateBadge(res);
     applyRunState(res);
   } catch { /* page navigating; the next tick retries */ }
@@ -471,8 +474,10 @@ $('entry').addEventListener('change', () => { save(); if (!running) setRunning(f
 $('removeExtras').addEventListener('change', save);
 
 async function refresh() {
+  const asked = sessionTabId;
   try {
     const res = await send({ type: 'PING' });
+    if (sessionTabId !== asked) return; // switched again while we were asking
     updateBadge(res);
     // Picks up a run this tab started earlier, and clears the display of one
     // belonging to a tab we have just switched away from.

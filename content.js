@@ -29,12 +29,19 @@
 
   // A long wait in one piece would leave Stop unresponsive for its whole length,
   // so sit out the gap in slices and check between them.
+  //
+  // Counting slices would be wrong: Chrome clamps timers in a hidden tab to
+  // roughly one a second, so twenty 100ms slices become twenty seconds once the
+  // user looks at another tab. Work to a deadline instead - then a slow slice
+  // simply overshoots the end and the gap still lasts about as long as asked.
   async function pause(ms) {
-    for (let left = ms; left > 0; left -= 100) {
+    const until = Date.now() + ms;
+    for (;;) {
       checkCancelled();
-      await wait(Math.min(100, left));
+      const left = until - Date.now();
+      if (left <= 0) return;
+      await wait(Math.min(150, left));
     }
-    checkCancelled();
   }
 
   function getContainer() {
