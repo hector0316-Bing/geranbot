@@ -14,10 +14,37 @@ fills the criteria back in one field at a time.
 The icon opens a side panel docked to the right of the window. It is a browser
 panel, not an overlay: the page is given the remaining width rather than being
 covered, the panel runs the full height of the window, and it stays put while
-the page scrolls. Drag its inner edge to resize. Needs Chrome 114 or newer.
+the page scrolls. Drag its inner edge to resize. Needs Chrome 116 or newer.
 
 Nothing runs until you open the panel — the page script is injected on demand
 under `activeTab`, so the extension has no access to any other site.
+
+## One session per tab
+
+The panel belongs to the tab it was opened on. Chrome's default is one panel per
+window that follows you from tab to tab; that default is switched off and the
+panel is enabled only for the tab whose icon you clicked, so:
+
+- switching to another tab does not bring the panel with you;
+- opening it on that tab starts a **fresh session** — no result, empty input;
+- coming back to the first tab restores exactly what was there;
+- closing a tab discards its session.
+
+State is filed under the tab id in `chrome.storage.session`, so it lives as long
+as the browser session and never reaches disk.
+
+## While it is working
+
+**Catching** replaces the result boxes with a **skeleton** — shimmering
+placeholder bars in the shape of the UID and Content boxes — until the page has
+been read.
+
+**Filling** covers the panel with a centred working card: a pulsing indicator,
+the current step (`typing criterion 4 of 12…`) and a **Stop** button. The rest of
+the UI, the input box included, is dimmed and cannot be edited until the run
+finishes or is stopped, so the JSON cannot change underneath a run in progress.
+
+Both respect `prefers-reduced-motion`.
 
 ## Page type
 
@@ -178,18 +205,19 @@ payload can be fed straight back in.
 
 ## Checked against the real pages
 
-`submission.txt`, `review.txt` and `Refinement.txt` here, plus the dumps in
-[samples/](samples/), are captures of real pages. Running the extension's page
-script over them gives:
+The reader was built against saved DOM captures of all three page types, plus
+one Review page carrying failed checks. Those dumps are not kept in the repo —
+they are large and contain task content — but this is what the page script read
+from them:
 
 | Sample | Detected | UID | Sector | Criteria | Fields | Task notes |
 |---|---|---|---|---|---|---|
-| submission.txt | Submission (blurb) | ✓ | Mining, Quarrying, and Oil and Gas Extraction | 30 of 30 | 15 | Reviewer Feedback (the Automated one said "AutoEval execution failed" and was dropped) |
-| review.txt | Review (heading) | ✓ | Construction | 21 of 21 | 16 | Automated feedback + Reviewer Feedback |
-| Refinement.txt | Refinement (blurb) | ✓ | Professional, Scientific, and Technical Services (+ Tier 2, Areas of Focus) | 1 of 15 mounted | 1 | Correction Feedback + Agentic Rubric Quality Check |
-| samples/errors & succss for Review.txt | Review (heading) | ✓ | Construction | 32 of 32 | 16 | Automated feedback + Reviewer Feedback, **plus 2 failed checks** |
+| Submission | Submission (blurb) | ✓ | Mining, Quarrying, and Oil and Gas Extraction | 30 of 30 | 15 | Reviewer Feedback (the Automated one said "AutoEval execution failed" and was dropped) |
+| Review | Review (heading) | ✓ | Construction | 21 of 21 | 16 | Automated feedback + Reviewer Feedback |
+| Refinement | Refinement (blurb) | ✓ | Professional, Scientific, and Technical Services (+ Tier 2, Areas of Focus) | 1 of 15 mounted | 1 | Correction Feedback + Agentic Rubric Quality Check |
+| Review, with failing checks | Review (heading) | ✓ | Construction | 32 of 32 | 16 | Automated feedback + Reviewer Feedback, **plus 2 failed checks** |
 
-The Refinement figure is a limit of the dump, not of the extension: 14 of its 15
+The Refinement figure was a limit of that dump, not of the extension: 14 of its 15
 sections were collapsed when the HTML was captured, and a saved snapshot has no
 React behind it to mount them when clicked. On the live page they expand
 normally. If a section ever does fail to open, the status line says how many
@@ -254,7 +282,10 @@ than failing the run.
 ## Files
 
 - [manifest.json](manifest.json) — MV3 manifest, `activeTab` + `scripting` + `storage` + `sidePanel`
-- [background.js](background.js) — opens the side panel when the toolbar icon is clicked
+- [background.js](background.js) — opens the side panel when the toolbar icon is clicked, one per tab
+- [icon.svg](icon.svg) — the toolbar icon: a person at a monitor. Chrome only
+  takes raster icons, so [tools/make-icons.mjs](tools/make-icons.mjs) renders it
+  to `icons/icon{16,32,48,128}.png`. Edit the SVG, then re-run:
+  `node <browser-automation>/browser.mjs about:blank --script tools/make-icons.mjs`
 - [content.js](content.js) — page side: read fields, fill values, add/delete sections
 - [panel.html](panel.html) / [panel.css](panel.css) / [panel.js](panel.js) — the side panel UI
-- [samples/](samples/) — extra page dumps used to check the reader

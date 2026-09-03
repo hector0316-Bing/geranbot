@@ -23,6 +23,26 @@
   </div>
 
   <div class="scroll">
+    <section id="skeleton" class="result" hidden aria-hidden="true">
+      <div class="part">
+        <div class="part-head"><span>UID</span></div>
+        <div class="part-body"><span class="sk" style="width: 62%"></span></div>
+      </div>
+      <div class="part">
+        <div class="part-head"><span>Content</span></div>
+        <div class="part-body">
+          <span class="sk" style="width: 38%"></span>
+          <span class="sk" style="width: 92%"></span>
+          <span class="sk" style="width: 84%"></span>
+          <span class="sk" style="width: 66%"></span>
+          <span class="sk sk-gap" style="width: 46%"></span>
+          <span class="sk" style="width: 88%"></span>
+          <span class="sk" style="width: 79%"></span>
+          <span class="sk" style="width: 55%"></span>
+        </div>
+      </div>
+    </section>
+
     <section id="result" class="result" hidden>
       <div class="part" id="uidPart" role="button" tabindex="0" title="Click to copy the UID">
         <div class="part-head">
@@ -97,6 +117,14 @@ which section each row goes to.'></textarea>
 
     <button id="apply" class="primary">Type into page</button>
     <p id="status" class="status"></p>
+  </div>
+
+  <div id="busy" class="busy" hidden>
+    <div class="busy-card">
+      <div class="pulse" aria-hidden="true"><span></span><span></span><span></span></div>
+      <p id="busyText" class="busy-text">Working…</p>
+      <button id="busyStop" class="link">Stop</button>
+    </div>
   </div>
 
   <input type="file" id="file" accept=".json,application/json" hidden>

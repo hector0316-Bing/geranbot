@@ -1,0 +1,7 @@
+# Web sources: LF in the repo and in the working tree, so Git stops rewriting
+# line endings on Windows checkouts.
+* text=auto eol=lf
+
+# Rendered icons are binary; never touch them.
+*.png binary
+*.crx binary

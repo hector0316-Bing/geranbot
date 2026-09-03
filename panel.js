@@ -6,8 +6,23 @@ const catchBtn = $('catch');
 
 let running = false;
 let poller = null;
-let modeTouched = false; // once the user picks, stop auto-selecting over them
-let caught = null;       // the last payload read off the page
+let modeTouched = false;   // once the user picks, stop auto-selecting over them
+let caught = null;         // the last payload read off the page
+let sessionTabId = null;   // the tab this panel session belongs to
+
+// A catch swaps the result for shimmering placeholders; a fill covers the panel
+// and locks the form until it finishes.
+function showSkeleton(on) {
+  $('skeleton').hidden = !on;
+  if (on) $('result').hidden = true;
+}
+
+function showBusy(on, text) {
+  $('busy').hidden = !on;
+  if (text) $('busyText').textContent = text;
+  for (const id of ['catch', 'json', 'result']) $(id).classList.toggle('locked', on);
+  document.querySelector('.bottom').classList.toggle('locked', on);
+}
 
 const modeRadios = Array.from(document.querySelectorAll('input[name="mode"]'));
 
@@ -116,6 +131,7 @@ function renderContent(c) {
 
 function showResult(data) {
   caught = data;
+  $('skeleton').hidden = true;
   $('uidValue').textContent = data.uid || '(no UID on this page)';
   $('contentValue').textContent = renderContent(data.content || {}) || '(nothing captured)';
   $('result').hidden = false;
@@ -187,6 +203,7 @@ for (const r of modeRadios) {
 
 catchBtn.addEventListener('click', async () => {
   setStatus('Reading page…');
+  showSkeleton(true);
   try {
     const { data, meta } = await send({ type: 'EXTRACT', options: { mode: selectedMode() } });
     showResult(data);
@@ -206,6 +223,8 @@ catchBtn.addEventListener('click', async () => {
     refresh();
   } catch (e) {
     setStatus(e.message, 'err');
+  } finally {
+    showSkeleton(false);
   }
 });
 
@@ -229,6 +248,7 @@ async function pollProgress() {
     if (res.busy && res.progress) {
       const p = res.progress;
       setStatus(`${p.phase} ${p.index}/${p.total}…`);
+      showBusy(true, `${p.phase} criterion ${p.index} of ${p.total}…`);
     } else if (!res.busy && running) {
       setRunning(false); // finished while the popup was closed
     }
@@ -251,8 +271,10 @@ applyBtn.addEventListener('click', async () => {
   }
 
   const speed = Number($('speed').value);
+  const verbing = $('entry').value === 'type' ? 'Typing' : 'Pasting';
   setRunning(true);
-  setStatus('Typing…');
+  setStatus(`${verbing}…`);
+  showBusy(true, `${verbing} into the page…`);
 
   try {
     const { result } = await send({
@@ -273,6 +295,7 @@ applyBtn.addEventListener('click', async () => {
   } catch (e) {
     setStatus(e.message, e.message === 'Stopped.' ? '' : 'err');
   } finally {
+    showBusy(false);
     setRunning(false);
     refresh();
   }
@@ -309,6 +332,8 @@ $('toInput').addEventListener('click', () => {
   setStatus('Criteria copied into the input box.', 'ok');
 });
 
+$('busyStop').addEventListener('click', () => applyBtn.click());
+
 $('loadFile').addEventListener('click', () => $('file').click());
 
 $('file').addEventListener('change', async (e) => {
@@ -336,16 +361,52 @@ $('clear').addEventListener('click', () => {
   setStatus('');
 });
 
-/* Keep the editor contents, the caught result and the options between openings. */
+/* ---------- per-tab session ----------
+   State is filed under the tab it came from, in session storage so it dies with
+   the browser session. Switching tabs swaps the whole session: a tab that has
+   not been caught yet opens empty. */
+
+const store = chrome.storage.session ?? chrome.storage.local;
+const stateKey = () => `tab:${sessionTabId}`;
+
 function save() {
-  chrome.storage.local.set({
-    json: editor.value,
-    speed: $('speed').value,
-    entry: $('entry').value,
-    removeExtras: $('removeExtras').checked,
-    mode: selectedMode(),
-    caught
+  if (sessionTabId === null) return;
+  store.set({
+    [stateKey()]: {
+      json: editor.value,
+      speed: $('speed').value,
+      entry: $('entry').value,
+      removeExtras: $('removeExtras').checked,
+      mode: selectedMode(),
+      caught
+    }
   });
+}
+
+async function loadSession(tabId) {
+  sessionTabId = tabId;
+  modeTouched = false;
+
+  const bag = await store.get(stateKey());
+  const s = bag[stateKey()] || {};
+
+  editor.value = s.json || '';
+  $('speed').value = s.speed || '22';
+  $('entry').value = s.entry || 'paste';
+  $('removeExtras').checked = s.removeExtras !== false;
+  setMode(s.mode || null);
+  $('modeHint').textContent = '';
+
+  if (s.caught) {
+    showResult(s.caught);
+  } else {
+    caught = null;
+    $('result').hidden = true;
+  }
+
+  showSkeleton(false);
+  setRunning(false);
+  setStatus('');
 }
 
 editor.addEventListener('input', save);
@@ -357,22 +418,22 @@ async function refresh() {
   try {
     const res = await send({ type: 'PING' });
     updateBadge(res);
-    // Typing started before the popup was last closed is still going.
+    // A run started before the panel was last closed may still be going.
     if (res.busy && !running) setRunning(true);
   } catch {
     $('pageInfo').textContent = 'page not ready';
   }
 }
 
+// The panel document can outlive a tab switch, so follow the active tab.
+chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+  if (tabId === sessionTabId) return;
+  await loadSession(tabId);
+  refresh();
+});
+
 (async () => {
-  const stored = await chrome.storage.local.get(['json', 'speed', 'entry', 'removeExtras', 'mode', 'caught']);
-  if (stored.json) editor.value = stored.json;
-  if (stored.speed) $('speed').value = stored.speed;
-  if (stored.entry) $('entry').value = stored.entry;
-  if (stored.removeExtras === false) $('removeExtras').checked = false;
-  // Last session's choice shows immediately; detection overrides it a tick later.
-  if (stored.mode) setMode(stored.mode);
-  if (stored.caught) showResult(stored.caught);
-  setRunning(false); // label the action button for the restored entry mode
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  await loadSession(tab?.id ?? null);
   refresh();
 })();
