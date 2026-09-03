@@ -133,6 +133,14 @@ needed, not all up front.
 has fewer entries than the page, using each section's own "Delete section"
 button. Untick it to leave the spares alone.
 
+Deleting puts up a confirmation, and nothing is removed until its affirmative
+button is pressed - so the extension presses it, one section at a time until the
+count matches. The affirmative button is picked by rank (Yes, then Delete or
+Remove, then Confirm, then OK) and anything reading as Cancel, No, Keep, Back or
+Close is excluded, so a confirmation is never dismissed the wrong way. If the
+page refuses to remove a section, the status line says how many were left rather
+than passing over it in silence.
+
 ## Two tabs
 
 The panel has a **Catch** tab and an **Input** tab. Each owns the full height, so

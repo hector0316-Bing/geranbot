@@ -647,15 +647,66 @@
     await wait(120);
   }
 
+  /* ---------- the "are you sure?" step ---------- */
+
+  function isVisible(el) {
+    return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+  }
+
+  // Rank the buttons in a confirmation so the affirmative one is chosen, and a
+  // Cancel is never mistaken for it.
+  const DECLINE = /^(no|cancel|keep|back|close|dismiss)\b/i;
+
+  function confirmRank(t) {
+    if (DECLINE.test(t)) return 99;
+    if (/^yes\b/i.test(t)) return 0;
+    if (/^(delete|remove)\b/i.test(t)) return 1;
+    if (/^confirm\b/i.test(t)) return 2;
+    if (/^ok$/i.test(t)) return 3;
+    return 99;
+  }
+
+  function openDialog() {
+    const boxes = document.querySelectorAll(
+      '[role="alertdialog"], [role="dialog"], [aria-modal="true"]'
+    );
+    return Array.from(boxes).find(
+      (d) => isVisible(d) && d.getAttribute('data-state') !== 'closed'
+    ) || null;
+  }
+
+  // Deleting a section puts up a confirmation. Nothing is removed until its
+  // affirmative button is pressed, so press it.
+  async function confirmIfAsked() {
+    const dialog = await until(openDialog, { timeout: 1500, step: 60 });
+    if (!dialog) return false;
+
+    const choice = Array.from(dialog.querySelectorAll('button'))
+      .filter((b) => !b.disabled && isVisible(b))
+      .map((b) => ({ b, rank: confirmRank(buttonText(b)) }))
+      .filter((x) => x.rank < 99)
+      .sort((a, b) => a.rank - b.rank)[0];
+
+    if (!choice) return false;
+    choice.b.click();
+    await wait(120);
+    return true;
+  }
+
   async function removeExtras(target) {
     let current = getInstances().length;
+
     while (current > target) {
       checkCancelled();
       const del = findDeleteButton(getInstances()[current - 1]);
-      if (!del) break; // leave the spares rather than failing the whole run
+      if (!del) break; // no delete control: leave the spares rather than fail
+
       del.click();
+      await wait(120);
+      await confirmIfAsked();
+
       const shrank = await until(() => getInstances().length < current);
-      if (!shrank) break;
+      if (!shrank) break; // the page did not remove it; report the leftovers
       current = getInstances().length;
       await wait(100);
     }
@@ -793,6 +844,7 @@
     const truncated = [];
     let added = 0;
     let filled = 0;
+    let extrasLeft = 0; // sections the page would not delete
 
     try {
       // The criteria list is unreachable while its section is collapsed.
@@ -801,7 +853,8 @@
 
       if (options.removeExtras !== false) {
         progress.phase = 'tidying';
-        await removeExtras(rows.length);
+        const left = await removeExtras(rows.length);
+        extrasLeft = Math.max(0, left - rows.length);
       }
 
       for (let i = 0; i < rows.length; i++) {
@@ -859,6 +912,7 @@
       filled,
       added,
       sectionsOnPage: getInstances().length,
+      extrasLeft,
       skippedFields,
       truncated
     };

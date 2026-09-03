@@ -392,6 +392,10 @@ applyBtn.addEventListener('click', async () => {
     const verb = $('entry').value === 'type' ? 'Typed' : 'Pasted';
     let msg = `${verb} ${result.filled} of ${result.requested} criteria`;
     msg += result.added ? ` (added ${result.added} new section${result.added === 1 ? '' : 's'}).` : '.';
+    if (result.extrasLeft) {
+      msg += `\n${result.extrasLeft} extra section${result.extrasLeft === 1 ? '' : 's'} `
+        + 'could not be deleted — the page did not remove them.';
+    }
     if (result.skippedFields.length) msg += `\nNo field for: ${result.skippedFields.join(', ')}`;
     if (result.truncated.length) msg += `\nCut to the field limit: ${result.truncated.join(', ')}`;
 
