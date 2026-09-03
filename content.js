@@ -199,6 +199,32 @@
     return out;
   }
 
+  // A refinement task shows the rubric it is revising as a read-only document:
+  // "Criterion 1 — weight 2" as a heading, the criterion text in the paragraphs
+  // under it, up to the next heading.
+  const RUBRIC_HEADING = /^criterion\s*(\d+)\s*[—–-]\s*weight\s*(-?\d+)$/i;
+
+  function readProvidedRubrics() {
+    const out = [];
+    for (const h of document.querySelectorAll('h1, h2, h3, h4, h5, h6')) {
+      if (h.closest(INSTANCE)) continue; // the editable list, handled elsewhere
+
+      const m = (h.textContent || '').replace(/\s+/g, ' ').trim().match(RUBRIC_HEADING);
+      if (!m) continue;
+
+      const parts = [];
+      for (let el = h.nextElementSibling; el; el = el.nextElementSibling) {
+        if (/^H[1-6]$/.test(el.tagName)) break;
+        const t = (el.innerText || el.textContent || '').trim();
+        if (t) parts.push(t);
+      }
+
+      const criterion = parts.join('\n').trim();
+      if (criterion) out.push({ criterion, weight: Number(m[2]) });
+    }
+    return out;
+  }
+
   // Check results paint themselves green or red. A green one says nothing went
   // wrong, so only the red ones are worth carrying off the page.
   function readErrorBlocks() {
@@ -517,9 +543,35 @@
     return true;
   }
 
-  async function expandAll() {
+  // Sections, criteria and notes are all Radix accordions, and a closed one has
+  // no content in the DOM at all, so everything has to be opened before the page
+  // can be read. Repeatedly: opening "Section 2" reveals the accordions nested
+  // inside it, which may themselves be closed.
+  //
+  // aria-expanded is what separates an accordion from the rest. The page puts
+  // data-radix-collection-item on checkbox and radio items too, and those carry
+  // data-state="unchecked" with no aria-expanded - clicking one would tick a box
+  // on the user's form. Menu buttons are skipped for the same reason.
+  async function expandEverything() {
+    // Click each trigger at most once. A second click on one that has not
+    // repainted yet would shut it again.
+    const tried = new WeakSet();
     let opened = 0;
-    for (const inst of getInstances()) if (await expand(inst)) opened++;
+
+    for (let pass = 0; pass < 8; pass++) {
+      const closed = Array.from(
+        document.querySelectorAll('button[aria-expanded="false"]:not([aria-haspopup])')
+      ).filter((b) => !b.disabled && !tried.has(b));
+      if (!closed.length) break;
+
+      for (const btn of closed) {
+        tried.add(btn);
+        btn.click();
+        opened++;
+        await wait(60);
+      }
+      await wait(200); // let the newly mounted content settle
+    }
     return opened;
   }
 
@@ -598,9 +650,12 @@
   async function extract(options = {}) {
     const mode = options.mode || detectMode().mode;
 
-    const criteria = [];
+    // Anything still collapsed is invisible to every reader below, including the
+    // criteria list itself if its section happens to be shut.
+    const opened = await expandEverything();
+
+    let criteria = [];
     if (getContainer()) {
-      await expandAll();
       for (const inst of getInstances()) {
         const row = {};
         for (const f of fieldsOf(inst)) {
@@ -615,6 +670,17 @@
           if (num) row.weight = readControl(num);
         }
         if (Object.keys(row).length) criteria.push(row);
+      }
+    }
+
+    // A refinement task usually opens with the criteria list still blank; the
+    // rubric being revised is the read-only copy, so fall back to that.
+    let criteriaSource = 'form';
+    if (mode === 'refinement' && !criteria.some((c) => String(c.criterion || '').trim())) {
+      const provided = readProvidedRubrics();
+      if (provided.length) {
+        criteria = provided;
+        criteriaSource = 'provided rubrics';
       }
     }
 
@@ -665,7 +731,7 @@
 
     // A section whose content never mounted yields nothing; say so rather than
     // quietly handing back a short list.
-    return { data, meta: { sections: getInstances().length } };
+    return { data, meta: { sections: getInstances().length, criteriaSource, opened } };
   }
 
   // A row is written either as { "criterion": text, "weight": n } or with the
@@ -711,6 +777,10 @@
     let filled = 0;
 
     try {
+      // The criteria list is unreachable while its section is collapsed.
+      progress.phase = 'opening';
+      await expandEverything();
+
       if (options.removeExtras !== false) {
         progress.phase = 'tidying';
         await removeExtras(rows.length);

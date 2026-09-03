@@ -159,8 +159,8 @@ async function copyText(text) {
 async function copyPart(partEl, text, what) {
   if (!text) return setStatus(`No ${what} to copy.`, 'err');
   if (!(await copyText(text))) return setStatus(`Could not copy the ${what}.`, 'err');
-  partEl.classList.add('copied');
-  setTimeout(() => partEl.classList.remove('copied'), 900);
+  partEl.classList.add('copied');   // swaps the copy icon for a tick
+  setTimeout(() => partEl.classList.remove('copied'), 1000);
   setStatus(`${what} copied to clipboard.`, 'ok');
 }
 
@@ -216,8 +216,11 @@ catchBtn.addEventListener('click', async () => {
     if (c.tier) extras.push('tier');
     if (c.fields) extras.push(`${c.fields.length} fields`);
 
+    const fromRubric = meta?.criteriaSource === 'provided rubrics';
     let msg = `Caught ${data.criteria.length} criteria${extras.length ? `, plus ${extras.join(', ')}` : ''}.`;
-    const short = (meta?.sections ?? data.criteria.length) - data.criteria.length;
+    if (fromRubric) msg += '\nThe criteria list was empty, so these came from Provided Rubrics.';
+    // Only meaningful when the criteria came off the form itself.
+    const short = fromRubric ? 0 : (meta?.sections ?? data.criteria.length) - data.criteria.length;
     if (short > 0) msg += `\n${short} section${short === 1 ? '' : 's'} would not open and stayed empty.`;
     setStatus(msg, short > 0 ? '' : 'ok');
     refresh();

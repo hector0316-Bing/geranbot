@@ -179,6 +179,11 @@ h1 {
 .part.copied .part-head { color: var(--ok); }
 .copy-icon { display: flex; align-items: center; }
 
+/* The copy icon becomes a tick for a second once the clipboard has it. */
+.copy-icon .icon-check { display: none; }
+.part.copied .copy-icon .icon-copy { display: none; }
+.part.copied .copy-icon .icon-check { display: block; }
+
 .part-body {
   margin: 0;
   padding: 7px 8px;

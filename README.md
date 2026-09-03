@@ -73,6 +73,21 @@ is the only thing that separates them, so detection works like this:
 Picking one by hand stops auto-selection overriding you for the rest of that
 popup session; the hint line says whether the heading, the blurb, or you decided.
 
+## Collapsed sections
+
+A task page can open with sections shut — "Section 2 - Golden Solution and
+Rubric", "Section 3 - AHT" and so on — and Radix keeps a closed section's
+content out of the DOM entirely. Nothing inside one can be read or filled while
+it is shut, so both buttons open everything first, repeatedly: opening a section
+reveals the accordions nested inside it, which may themselves be closed.
+
+Only accordions are touched. The page marks checkbox and radio items with the
+same `data-radix-collection-item` attribute, so the trigger has to be identified
+by `aria-expanded` — those items carry `data-state="unchecked"` and no
+`aria-expanded`, and clicking one would tick a box on the form. Menu buttons are
+skipped for the same reason, and each trigger is clicked at most once so a slow
+one cannot be toggled shut again.
+
 ## The two buttons
 
 **Catch criteria** — reads the page into the result panel: the UID on its own,
@@ -195,6 +210,12 @@ payload can be fed straight back in.
   and `time`. **An "Automated feedback" note whose body mentions a failure is
   left out** — passing auto-evals are kept. "Section 1 – …" accordions are not
   notes and are ignored.
+- **Criteria on a Refinement page** — the editable list first. A refinement task
+  usually opens with that list still blank, and when it is, the criteria are read
+  from the read-only **Provided Rubrics** document instead: each
+  `Criterion N - weight W` heading with the paragraphs under it. The status line
+  says which of the two it used, and the JSON is the same either way, so it can
+  be pasted straight back into the empty list.
 - **Everything else** — matched by the field's **label**, never its
   `data-testid`: the hashes in `field-code-194d3` are regenerated and cannot be
   relied on. Values come from a `<pre>` for auto-eval output, from the chip
@@ -214,14 +235,17 @@ from them:
 |---|---|---|---|---|---|---|
 | Submission | Submission (blurb) | ✓ | Mining, Quarrying, and Oil and Gas Extraction | 30 of 30 | 15 | Reviewer Feedback (the Automated one said "AutoEval execution failed" and was dropped) |
 | Review | Review (heading) | ✓ | Construction | 21 of 21 | 16 | Automated feedback + Reviewer Feedback |
-| Refinement | Refinement (blurb) | ✓ | Professional, Scientific, and Technical Services (+ Tier 2, Areas of Focus) | 1 of 15 mounted | 1 | Correction Feedback + Agentic Rubric Quality Check |
+| Refinement | Refinement (blurb) | ✓ | Professional, Scientific, and Technical Services (+ Tier 2, Areas of Focus) | 17, from Provided Rubrics (the list was empty) | 1 | Correction Feedback + Agentic Rubric Quality Check |
 | Review, with failing checks | Review (heading) | ✓ | Construction | 32 of 32 | 16 | Automated feedback + Reviewer Feedback, **plus 2 failed checks** |
 
-The Refinement figure was a limit of that dump, not of the extension: 14 of its 15
-sections were collapsed when the HTML was captured, and a saved snapshot has no
-React behind it to mount them when clicked. On the live page they expand
-normally. If a section ever does fail to open, the status line says how many
-stayed empty rather than silently handing back a short list.
+That Refinement page had an empty criteria list — the task had not been written
+yet — so its 17 criteria came from the Provided Rubrics document instead.
+
+A separate limit worth knowing: 14 of that dump's 15 form sections were collapsed
+when the HTML was captured, and a saved snapshot has no React behind it to mount
+them when clicked. On a live page they expand normally. If a section ever does
+fail to open, the status line says how many stayed empty rather than silently
+handing back a short list.
 
 ### Input template
 
