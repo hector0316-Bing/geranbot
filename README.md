@@ -157,7 +157,9 @@ in its corner; the box flashes green when the clipboard has it.
 
 - **UID** — just the identifier, on its own, so it can go straight into a
   tracker or a message.
-- **Content** — everything else as one plain-text block, in this order:
+- **Content** — everything else as one plain-text block, opening with
+  `<UID>_<time caught>` so a pasted block identifies itself without the UID box
+  beside it, then in this order:
 
   1. Task notes — Reviewer Feedback, Reviewer Note, Rebuttal Note, Automated
      feedback, each with its timestamp
@@ -271,16 +273,19 @@ handing back a short list.
 
 ### Input template
 
-The input box shows this shape, and **Send criteria to input** writes it:
+The input box takes the criteria fragment on its own — no outer braces needed:
 
-```json
-{
-  "criteria": [
-    { "1": "Criterion text, at least 20 characters.", "weight": 2 },
-    { "2": "A failure mode carries a negative weight.", "weight": -3 }
-  ]
-}
 ```
+"criteria": [
+  { "1": "Criterion text, at least 20 characters.", "weight": 2 },
+  { "2": "A failure mode carries a negative weight.", "weight": -3 }
+]
+```
+
+The strict reading is tried first, then the obvious repairs: the outer `{ }` put
+back, a closing bracket added, a trailing comma dropped. Anything genuinely
+malformed is still reported rather than guessed at. **Send criteria to input**
+writes the complete object, since that costs nothing to generate.
 
 The key is the criterion's number. It is a label only — position in the list
 decides which section a row is written to.

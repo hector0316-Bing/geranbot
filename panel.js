@@ -152,12 +152,70 @@ function renderContent(c) {
   return out.join('\n').trim();
 }
 
+// Local time, stamped when the catch happened rather than when it is redrawn,
+// so a restored session still shows when it was taken.
+function stamp(d = new Date()) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} `
+    + `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
 function showResult(data) {
   caught = data;
   $('skeleton').hidden = true;
   $('uidValue').textContent = data.uid || '(no UID on this page)';
-  $('contentValue').textContent = renderContent(data.content || {}) || '(nothing captured)';
+  // The content opens with the UID and the time it was caught, so a pasted
+  // block identifies itself without the UID box beside it.
+  const header = `${data.uid || '(no UID)'}_${data.caughtAt || stamp()}`;
+  $('contentValue').textContent = [header, renderContent(data.content || {})]
+    .filter(Boolean).join('\n\n');
   $('result').hidden = false;
+}
+
+/* ---------- reading what was pasted ----------
+   People paste the criteria fragment on its own - `"criteria": [ … ]` with the
+   outer braces left behind, sometimes without the closing bracket. Rather than
+   refuse it, try the strict reading first and fall back to the obvious repairs. */
+
+// Append whatever brackets are still open, ignoring anything inside a string.
+function closeBrackets(text) {
+  const want = [];
+  let inString = false;
+  let escaped = false;
+
+  for (const ch of text) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '{') want.push('}');
+    else if (ch === '[') want.push(']');
+    else if (ch === '}' || ch === ']') want.pop();
+  }
+  return text + want.reverse().join('');
+}
+
+function parseInput(text) {
+  const raw = text.trim();
+  if (!raw) throw new Error('Paste some criteria JSON first.');
+
+  // Close what is open first, then wrap: wrapping a fragment whose bracket is
+  // still open would put the brace on the wrong side of it.
+  const tries = [];
+  for (const base of [raw, closeBrackets(raw)]) {
+    tries.push(base);
+    // A fragment starting at the key needs the object put back around it.
+    if (!base.startsWith('{') && !base.startsWith('[')) tries.push(`{${base}}`);
+  }
+  tries.push(...tries.map((t) => t.replace(/,\s*([}\]])/g, '$1'))); // trailing commas
+
+  for (const candidate of tries) {
+    try { return JSON.parse(candidate); } catch { /* try the next repair */ }
+  }
+  JSON.parse(raw); // nothing worked: report the original complaint
 }
 
 // navigator.clipboard is missing or throws outside a secure context, so keep the
@@ -230,6 +288,7 @@ catchBtn.addEventListener('click', async () => {
   showSkeleton(true);
   try {
     const { data, meta } = await send({ type: 'EXTRACT', options: { mode: selectedMode() } });
+    data.caughtAt = stamp();
     showResult(data);
     save();
 
@@ -304,7 +363,7 @@ applyBtn.addEventListener('click', async () => {
 
   let parsed;
   try {
-    parsed = JSON.parse(editor.value);
+    parsed = parseInput(editor.value);
   } catch (e) {
     setStatus(`Invalid JSON: ${e.message}`, 'err');
     return;
@@ -399,7 +458,7 @@ $('file').addEventListener('change', async (e) => {
 
 $('format').addEventListener('click', () => {
   try {
-    editor.value = JSON.stringify(JSON.parse(editor.value), null, 2);
+    editor.value = JSON.stringify(parseInput(editor.value), null, 2);
     save();
     setStatus('Formatted.', 'ok');
   } catch (e) {

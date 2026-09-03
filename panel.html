@@ -83,17 +83,16 @@
   </section>
 
   <section id="viewInput" class="view" role="tabpanel" aria-labelledby="tabInput" hidden>
-    <textarea id="json" spellcheck="false" placeholder='Paste or upload JSON like this:
+    <textarea id="json" spellcheck="false" placeholder='Paste or upload criteria like this:
 
-{
-  "criteria": [
-    { "1": "Criterion text, at least 20 characters.", "weight": 2 },
-    { "2": "A failure mode carries a negative weight.", "weight": -3 }
-  ]
-}
+"criteria": [
+  { "1": "Criterion text, at least 20 characters.", "weight": 2 },
+  { "2": "A failure mode carries a negative weight.", "weight": -3 }
+]
 
-"criterion" works in place of the number. Order decides
-which section each row goes to.'></textarea>
+The outer { } are optional, and so is the last ]. "criterion"
+works in place of the number. Order decides which section
+each row goes to.'></textarea>
 
     <div class="links">
       <button id="loadFile" class="link">Open file…</button>
