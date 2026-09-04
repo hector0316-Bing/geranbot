@@ -122,6 +122,15 @@ While it runs the button turns into **Stop** and the status line shows
 `typing 4/12…`. You can close the panel; the run continues, and reopening it
 picks the progress back up.
 
+**Switching tabs mid-run.** Chrome slows a hidden tab's timers, and the page's
+own re-render runs on those same timers - so a section that mounts in half a
+second in front can take many seconds behind. Waits on the page therefore stretch
+while the tab is behind, rather than declaring a failure that never happened and
+ending the run. The result says when part of a run happened in the background.
+
+Even so, a run is fastest and most reliable with the tab in front, and Chrome can
+throttle a long-hidden tab hard enough to stall one.
+
 ## Running out of sections
 
 Sections are filled in order. When the JSON has more entries than the page has

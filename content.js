@@ -11,15 +11,31 @@
   let cancelled = false;
   let progress = null;
   let checkProgress = null; // set while the feedback checks are being awaited
+  let hiddenDuringRun = false; // the tab went behind while we were working
 
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
+  // How long to wait on the page before calling something a failure.
+  //
+  // Chrome slows a hidden tab's timers, and the page's own re-render runs on
+  // those same timers - so a section that mounts in half a second in front can
+  // take many seconds behind. Judging it by the foreground budget declares a
+  // failure that never happened, and the caller throws, ending the run. The
+  // budget therefore grows the moment the tab goes behind, and because that can
+  // happen mid-wait it is re-checked on every pass.
+  const HIDDEN_PATIENCE = 8;
+
   async function until(fn, { timeout = 5000, step = 50 } = {}) {
-    const deadline = Date.now() + timeout;
+    const start = Date.now();
+    let budget = timeout;
     for (;;) {
       const v = fn();
       if (v) return v;
-      if (Date.now() > deadline) return null;
+      if (document.hidden) {
+        budget = Math.max(budget, timeout * HIDDEN_PATIENCE);
+        hiddenDuringRun = true;
+      }
+      if (Date.now() - start > budget) return null;
       await wait(step);
     }
   }
@@ -920,6 +936,7 @@
 
     const base = Math.max(0, Number(options.speed ?? 22));
     const paste = options.entry !== 'type'; // paste per field unless asked to type
+    hiddenDuringRun = false;
     const gap = Math.max(0, Number(options.gap ?? 2000)); // pause after each field
     busy = true;
     cancelled = false;
@@ -953,6 +970,8 @@
           added++;
           progress.phase = 'typing';
         }
+
+        if (document.hidden) hiddenDuringRun = true;
 
         const inst = getInstances()[i];
         if (!inst) throw new Error(`Section ${i + 1} did not appear.`);
@@ -997,6 +1016,7 @@
       filled,
       added,
       sectionsOnPage: getInstances().length,
+      ranInBackground: hiddenDuringRun,
       extrasLeft,
       skippedFields,
       truncated

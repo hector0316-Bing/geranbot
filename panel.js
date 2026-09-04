@@ -412,6 +412,9 @@ applyBtn.addEventListener('click', async () => {
     const verb = $('entry').value === 'type' ? 'Typed' : 'Pasted';
     let msg = `${verb} ${result.filled} of ${result.requested} criteria`;
     msg += result.added ? ` (added ${result.added} new section${result.added === 1 ? '' : 's'}).` : '.';
+    if (result.ranInBackground) {
+      msg += '\nPart of this ran while the tab was behind, which Chrome slows down.';
+    }
     if (result.extrasLeft) {
       msg += `\n${result.extrasLeft} extra section${result.extrasLeft === 1 ? '' : 's'} `
         + 'could not be deleted — the page did not remove them.';
