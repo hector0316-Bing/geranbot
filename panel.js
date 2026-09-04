@@ -286,8 +286,22 @@ catchBtn.addEventListener('click', async () => {
   setStatus('Reading page…');
   showTab('tabCatch');
   showSkeleton(true);
+  catchBtn.disabled = true;
+
+  // The checks are answered by the server, so say what is being waited on.
+  const watching = setInterval(async () => {
+    try {
+      const res = await send({ type: 'PING' });
+      const c = res.checkProgress;
+      if (c) setStatus(`Running the feedback checks — ${c.index} of ${c.total} answered…`);
+    } catch { /* the next tick tries again */ }
+  }, 900);
+
   try {
-    const { data, meta } = await send({ type: 'EXTRACT', options: { mode: selectedMode() } });
+    const { data, meta } = await send({
+      type: 'EXTRACT',
+      options: { mode: selectedMode(), runChecks: $('runChecks').checked }
+    });
     data.caughtAt = stamp();
     showResult(data);
     save();
@@ -298,6 +312,7 @@ catchBtn.addEventListener('click', async () => {
     if (c.sector) extras.push('sector');
     if (c.tier) extras.push('tier');
     if (c.fields) extras.push(`${c.fields.length} fields`);
+    if (c.errors) extras.push(`${c.errors.length} failed check${c.errors.length === 1 ? '' : 's'}`);
 
     const fromRubric = meta?.criteriaSource === 'provided rubrics';
     let msg = `Caught ${data.criteria.length} criteria${extras.length ? `, plus ${extras.join(', ')}` : ''}.`;
@@ -310,6 +325,8 @@ catchBtn.addEventListener('click', async () => {
   } catch (e) {
     setStatus(e.message, 'err');
   } finally {
+    clearInterval(watching);
+    catchBtn.disabled = false;
     showSkeleton(false);
   }
 });
@@ -492,6 +509,7 @@ function save() {
       speed: $('speed').value,
       entry: $('entry').value,
       gap: $('gap').value,
+      runChecks: $('runChecks').checked,
       tab: activeTabId(),
       removeExtras: $('removeExtras').checked,
       mode: selectedMode(),
@@ -511,6 +529,7 @@ async function loadSession(tabId) {
   $('speed').value = s.speed || '22';
   $('entry').value = s.entry || 'paste';
   $('gap').value = s.gap || '2000';
+  $('runChecks').checked = s.runChecks !== false;
   $('removeExtras').checked = s.removeExtras !== false;
   setMode(s.mode || null);
   $('modeHint').textContent = '';
@@ -533,6 +552,7 @@ async function loadSession(tabId) {
 editor.addEventListener('input', save);
 $('speed').addEventListener('change', save);
 $('gap').addEventListener('change', save);
+$('runChecks').addEventListener('change', save);
 $('entry').addEventListener('change', () => { save(); if (!running) setRunning(false); });
 $('removeExtras').addEventListener('change', save);
 

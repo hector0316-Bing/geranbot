@@ -190,6 +190,27 @@ each label ("This box will only populate once the auto-evaluations finish…",
 is left out rather than printed empty, and an auto-eval box still showing its
 "No code provided" placeholder counts as absent.
 
+## Running the checks
+
+Each check on the page — O*NET Compliance, Prompt Quality, Input Files Quality,
+Rubric Quality, Name Check and the rest — sits behind a **Check feedback**
+button, and its verdict only exists once that button has been pressed and the
+server has answered.
+
+When the prompt is filled, a catch presses every check that has not run yet,
+waits for all of them to answer, and only then reads the page. A check is
+finished when its result panel appears or its button turns into "Clear feedback
+results". Checks that have already answered are left alone, so re-catching does
+not re-run them.
+
+The answers can take a while, so the status line counts them off — *"Running the
+feedback checks — 2 of 5 answered…"* — and the Catch button is held until they
+are in. If one never answers, the catch goes ahead after three minutes and the
+result says which was still outstanding.
+
+**Run the feedback checks first** on the Catch tab turns this off, for when you
+want to read the page as it stands without asking the server for anything.
+
 **Check results** are read by colour. A panel painted `bg-success-subtle` passed,
 so it is left out; one painted `bg-error-subtle` is captured in full under
 **Failed checks**, tagged with the check it belongs to.

@@ -10,6 +10,7 @@
   let busy = false;
   let cancelled = false;
   let progress = null;
+  let checkProgress = null; // set while the feedback checks are being awaited
 
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -268,6 +269,72 @@
       out.push(where ? { label: where, text } : { text });
     }
     return out;
+  }
+
+  /* ---------- the "Check feedback" buttons ----------
+     Each check field carries one button reading "Check feedback". Pressing it
+     asks the server, and when the answer lands the button becomes "Clear
+     feedback results" and a pass/fail panel appears beside it. Both of those
+     say the check has finished. */
+
+  function checkFields() {
+    return Array.from(document.querySelectorAll('[data-testid^="field-"]'))
+      .filter((f) => /feedbackbutton/i.test(f.getAttribute('data-testid') || ''));
+  }
+
+  function checkRunButton(field) {
+    return Array.from(field.querySelectorAll('button'))
+      .find((b) => !b.disabled && /^check feedback$/i.test(buttonText(b))) || null;
+  }
+
+  function checkFinished(field) {
+    if (field.querySelector('[class*="bg-success-subtle"], [class*="bg-error-subtle"]')) return true;
+    return Array.from(field.querySelectorAll('button'))
+      .some((b) => /clear feedback/i.test(buttonText(b)));
+  }
+
+  function promptText() {
+    const el = document.querySelector('[data-testid="field-prompt"] textarea')
+      || Array.from(document.querySelectorAll('[data-testid^="field-"]'))
+        .find((f) => /^user prompt$/i.test(fieldLabel(f)))?.querySelector('textarea');
+    return (el?.value || '').trim();
+  }
+
+  // Press every check that has not run, then wait for all of them to answer.
+  // The results are read afterwards by the usual pass/fail sweep.
+  async function runFeedbackChecks({ timeout = 180000 } = {}) {
+    const pending = [];
+
+    for (const field of checkFields()) {
+      if (checkFinished(field)) continue;
+      const btn = checkRunButton(field);
+      if (!btn) continue;
+      btn.scrollIntoView({ block: 'center' });
+      btn.click();
+      pending.push({ field, label: fieldLabel(field) });
+      await wait(250); // stagger, rather than firing them all at once
+    }
+
+    const started = pending.length;
+    if (!started) return { started: 0, answered: 0, waiting: [] };
+
+    checkProgress = { phase: 'checks', index: 0, total: started };
+    const deadline = Date.now() + timeout;
+    let left = pending;
+
+    while (left.length && Date.now() < deadline) {
+      checkCancelled();
+      await wait(500);
+      left = left.filter((p) => !checkFinished(p.field));
+      checkProgress = { phase: 'checks', index: started - left.length, total: started };
+    }
+
+    checkProgress = null;
+    return {
+      started,
+      answered: started - left.length,
+      waiting: left.map((p) => p.label)
+    };
   }
 
   /* ---------- form fields outside the criteria list ---------- */
@@ -722,6 +789,13 @@
     // criteria list itself if its section happens to be shut.
     const opened = await expandEverything();
 
+    // A filled prompt means the checks have something to judge, so run them and
+    // wait for the answers; the failures are picked up by the sweep below.
+    let checks = null;
+    if (options.runChecks !== false && promptText()) {
+      checks = await runFeedbackChecks();
+    }
+
     let criteria = [];
     if (getContainer()) {
       for (const inst of getInstances()) {
@@ -799,7 +873,7 @@
 
     // A section whose content never mounted yields nothing; say so rather than
     // quietly handing back a short list.
-    return { data, meta: { sections: getInstances().length, criteriaSource, opened } };
+    return { data, meta: { sections: getInstances().length, criteriaSource, opened, checks } };
   }
 
   // A row is written either as { "criterion": text, "weight": n } or with the
@@ -931,7 +1005,8 @@
               hasContainer: !!getContainer(),
               detected: detectMode(),
               busy,
-              progress
+              progress,
+              checkProgress
             });
             break;
           case 'CANCEL':
