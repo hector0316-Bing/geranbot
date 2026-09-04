@@ -789,13 +789,6 @@
     // criteria list itself if its section happens to be shut.
     const opened = await expandEverything();
 
-    // A filled prompt means the checks have something to judge, so run them and
-    // wait for the answers; the failures are picked up by the sweep below.
-    let checks = null;
-    if (options.runChecks !== false && promptText()) {
-      checks = await runFeedbackChecks();
-    }
-
     let criteria = [];
     if (getContainer()) {
       for (const inst of getInstances()) {
@@ -815,10 +808,25 @@
       }
     }
 
-    // A refinement task usually opens with the criteria list still blank; the
-    // rubric being revised is the read-only copy, so fall back to that.
+    const boardFilled = criteria.some((c) => String(c.criterion || '').trim());
+
+    // A refinement page with nothing in its criteria list is a task nobody has
+    // written yet. There is nothing for the checks to judge, and running them
+    // would only ask the server about work that does not exist.
+    const notStartedYet = mode === 'refinement' && !boardFilled;
+
+    // Otherwise a filled prompt means the checks have something to judge, so run
+    // them and wait; the failures are picked up by the sweep below.
+    let checks = null;
+    let checksSkipped = null;
+    if (options.runChecks === false) checksSkipped = 'turned off';
+    else if (notStartedYet) checksSkipped = 'refinement task not written yet';
+    else if (!promptText()) checksSkipped = 'no prompt yet';
+    else checks = await runFeedbackChecks();
+
+    // The rubric being revised is the read-only copy, so fall back to that.
     let criteriaSource = 'form';
-    if (mode === 'refinement' && !criteria.some((c) => String(c.criterion || '').trim())) {
+    if (notStartedYet) {
       const provided = readProvidedRubrics();
       if (provided.length) {
         criteria = provided;
@@ -873,7 +881,10 @@
 
     // A section whose content never mounted yields nothing; say so rather than
     // quietly handing back a short list.
-    return { data, meta: { sections: getInstances().length, criteriaSource, opened, checks } };
+    return {
+      data,
+      meta: { sections: getInstances().length, criteriaSource, opened, checks, checksSkipped }
+    };
   }
 
   // A row is written either as { "criterion": text, "weight": n } or with the

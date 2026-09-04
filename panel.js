@@ -315,6 +315,9 @@ catchBtn.addEventListener('click', async () => {
     if (c.errors) extras.push(`${c.errors.length} failed check${c.errors.length === 1 ? '' : 's'}`);
 
     const fromRubric = meta?.criteriaSource === 'provided rubrics';
+    if (meta?.checksSkipped === 'refinement task not written yet') {
+      extras.push('checks skipped, the task is not written yet');
+    }
     let msg = `Caught ${data.criteria.length} criteria${extras.length ? `, plus ${extras.join(', ')}` : ''}.`;
     if (fromRubric) msg += '\nThe criteria list was empty, so these came from Provided Rubrics.';
     // Only meaningful when the criteria came off the form itself.

@@ -208,6 +208,14 @@ feedback checks — 2 of 5 answered…"* — and the Catch button is held until 
 are in. If one never answers, the catch goes ahead after three minutes and the
 result says which was still outstanding.
 
+Nothing is pressed when there is nothing to judge:
+
+- **a Refinement page whose criteria list is still empty** — that is a task
+  nobody has written yet, so the checks are skipped and the criteria come from
+  Provided Rubrics as usual;
+- an empty prompt;
+- the toggle below turned off.
+
 **Run the feedback checks first** on the Catch tab turns this off, for when you
 want to read the page as it stands without asking the server for anything.
 
