@@ -206,7 +206,10 @@
     return { title: title || full, time: rest || null };
   }
 
-  async function readNotes() {
+  // keepFailedAutomated: on a refinement already under way the automated run is
+  // the feedback that matters, failures included - dropping it would leave that
+  // page with no automated feedback at all.
+  async function readNotes({ keepFailedAutomated = false } = {}) {
     const out = [];
     for (const btn of document.querySelectorAll('button[data-radix-collection-item]')) {
       if (btn.closest(INSTANCE)) continue; // criteria sections are handled separately
@@ -225,8 +228,9 @@
       const text = (region?.innerText || region?.textContent || '').trim();
       if (!text) continue;
 
-      // An auto-eval that reports failures is noise here, not task feedback.
-      if (/automated/i.test(title) && /fail/i.test(text)) continue;
+      // An auto-eval that reports failures is noise here, not task feedback -
+      // except on a refinement in progress, where it is the point.
+      if (!keepFailedAutomated && /automated/i.test(title) && /fail/i.test(text)) continue;
 
       out.push(time ? { title, time, text } : { title, text });
     }
@@ -851,7 +855,12 @@
     }
 
     const uid = readUid();
-    const notes = await readNotes();
+    // A refinement whose criteria are written is a revision under way. The
+    // correction feedback describes the task before that work, so it is stale
+    // once the criteria exist; the automated run is what speaks to the task now.
+    const revisionUnderWay = mode === 'refinement' && boardFilled;
+
+    const notes = await readNotes({ keepFailedAutomated: revisionUnderWay });
     const { named, list } = readFields();
 
     // Submission and Review label it "Sector"; Refinement says "Task Sector".
@@ -861,8 +870,10 @@
     const areasOfFocus = readLabelledBlock('Areas of Focus of Feedback');
 
     // Refinement carries its feedback as headed blocks, not accordions.
-    for (const [title, ...aliases] of [['Correction Feedback'], ['AutoEval Feedback'],
-      ['Agentic Rubric Quality Check'], ['Feedback to Improve Task']]) {
+    const headed = [['AutoEval Feedback'], ['Agentic Rubric Quality Check']];
+    if (!revisionUnderWay) headed.unshift(['Correction Feedback'], ['Feedback to Improve Task']);
+
+    for (const [title, ...aliases] of headed) {
       const text = readLabelledBlock(title, ...aliases);
       if (text && !notes.some((n) => n.title === title)) notes.push({ title, text });
     }

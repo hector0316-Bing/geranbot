@@ -275,6 +275,12 @@ payload can be fed straight back in.
 - **Task notes** — accordions outside the criteria list whose title mentions
   *feedback*, *note* or *rebuttal*, plus Refinement's headed "Correction
   Feedback" and "Agentic Rubric Quality Check" blocks, which are not accordions.
+  **On a Refinement page whose criteria are already written**, the correction
+  feedback is left out: it describes the task as it was before that work, so it
+  is stale once the criteria exist. The automated run is taken instead, failures
+  included — on a revision under way those failures are the point, and dropping
+  them would leave that page with no automated feedback at all. Before any work,
+  the correction feedback is what matters and it is kept as before.
   Collapsed ones are opened to read them. The header runs label and timestamp
   together ("Reviewer Feedback9/2/26, 4:15 AM"), so they are split into `title`
   and `time`. **An "Automated feedback" note whose body mentions a failure is
