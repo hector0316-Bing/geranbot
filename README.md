@@ -122,14 +122,23 @@ While it runs the button turns into **Stop** and the status line shows
 `typing 4/12…`. You can close the panel; the run continues, and reopening it
 picks the progress back up.
 
-**Switching tabs mid-run.** Chrome slows a hidden tab's timers, and the page's
-own re-render runs on those same timers - so a section that mounts in half a
-second in front can take many seconds behind. Waits on the page therefore stretch
-while the tab is behind, rather than declaring a failure that never happened and
-ending the run. The result says when part of a run happened in the background.
+**Switching tabs mid-run.** Chrome clamps a hidden tab's timers to about one a
+second, and to one a minute once it has been hidden a few minutes. A fill paced
+by the page's own `setTimeout` therefore crawls and then appears to stop.
 
-Even so, a run is fastest and most reliable with the tab in front, and Chrome can
-throttle a long-hidden tab hard enough to stall one.
+So the page does not keep its own time while it is behind: it asks the extension's
+service worker to do the waiting and carries on when the reply arrives. A service
+worker is not a tab and is not clamped, and messages reach a hidden page without
+being clamped either. If the worker cannot answer, the page falls back to its own
+timer — slow beats stopped. In front, nothing is sent to the worker at all.
+
+Waits on the page also stretch while the tab is behind, so a section that is slow
+to mount is waited for rather than declared missing. The result says when part of
+a run happened in the background.
+
+What this cannot beat is Chrome suspending the tab outright — freezing or
+discarding it under memory pressure stops all script in the page, and no
+extension can prevent that from inside. A long fill is still safest in front.
 
 ## Running out of sections
 
@@ -385,7 +394,8 @@ than failing the run.
 ## Files
 
 - [manifest.json](manifest.json) — MV3 manifest, `activeTab` + `scripting` + `storage` + `sidePanel`
-- [background.js](background.js) — opens the side panel when the toolbar icon is clicked, one per tab
+- [background.js](background.js) — opens the side panel when the toolbar icon is
+  clicked, one per tab, and keeps time for a page whose tab is in the background
 - [icon.svg](icon.svg) — the toolbar icon: a person at a monitor. Chrome only
   takes raster icons, so [tools/make-icons.mjs](tools/make-icons.mjs) renders it
   to `icons/icon{16,32,48,128}.png`. Edit the SVG, then re-run:

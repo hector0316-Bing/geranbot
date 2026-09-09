@@ -25,6 +25,22 @@ chrome.action.onClicked.addListener((tab) => {
   chrome.sidePanel.open({ tabId: tab.id }).catch((e) => console.error('Side panel:', e));
 });
 
+// Keeping time for a page that is in the background.
+//
+// Chrome clamps a hidden tab's timers to about one a second, and after a few
+// minutes hidden to one a minute - which is why a fill appeared to stop the
+// moment the user looked at another tab. A service worker is not a tab and is
+// not clamped, so the page asks this to do its waiting instead of setTimeout.
+// The reply is a message, and messages are delivered to a hidden page promptly.
+const MAX_SLEEP = 60000;
+
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type !== 'SLEEP') return undefined;
+  const ms = Math.min(Math.max(Number(msg.ms) || 0, 0), MAX_SLEEP);
+  setTimeout(() => sendResponse({ ok: true }), ms);
+  return true; // keep the channel open until the timer fires
+});
+
 // A closed tab takes its session with it.
 chrome.tabs.onRemoved.addListener((tabId) => {
   const store = chrome.storage.session ?? chrome.storage.local;

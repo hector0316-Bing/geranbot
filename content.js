@@ -13,7 +13,27 @@
   let checkProgress = null; // set while the feedback checks are being awaited
   let hiddenDuringRun = false; // the tab went behind while we were working
 
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const sleepHere = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // Chrome clamps this page's timers once the tab is behind - to about one a
+  // second, and to one a minute after a few minutes hidden - so a fill driven by
+  // setTimeout crawls and then appears to stop. The extension's service worker
+  // is not a tab and keeps proper time, so hand the waiting to it and let the
+  // reply wake us; messages reach a hidden page without being clamped.
+  //
+  // A clamped local timer would cost about a second anyway, so short waits are
+  // rounded up rather than made into a message each.
+  async function wait(ms) {
+    if (document.hidden && ms > 0) {
+      try {
+        await chrome.runtime.sendMessage({ type: 'SLEEP', ms: Math.max(ms, 250) });
+        return;
+      } catch {
+        // The worker is asleep or restarting; a clamped timer still beats stopping.
+      }
+    }
+    return sleepHere(ms);
+  }
 
   // How long to wait on the page before calling something a failure.
   //
