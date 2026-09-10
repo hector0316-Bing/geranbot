@@ -15,6 +15,68 @@
 
   const sleepHere = (ms) => new Promise((r) => setTimeout(r, ms));
 
+  /* ---------- staying awake while the tab is behind ----------
+     Slow timers were only half of it. Chrome also freezes a background tab
+     outright, and a frozen page runs no script at all - which is exactly what a
+     fill that stops dead when the user changes tab, and carries on untouched
+     when they come back, looks like from the outside.
+
+     Chrome will not freeze a page that is holding a Web Lock, so a run takes one
+     out and holds it until it finishes. The pacing below leans on the service
+     worker, and a worker with nothing to do is shut down, so an open port is
+     held for the same stretch to give it a reason to stay. Both are dropped the
+     moment the run ends: neither outlives the work it is protecting. */
+
+  let awake = 0;          // runs currently asking to stay awake
+  let releaseLock = null; // resolves the promise the Web Lock is held by
+  let keepPort = null;
+  let portOpenedAt = 0;
+
+  function openPort() {
+    try {
+      keepPort = chrome.runtime.connect({ name: 'keepalive' });
+      keepPort.onDisconnect.addListener(() => { keepPort = null; });
+      portOpenedAt = Date.now();
+    } catch {
+      keepPort = null; // the worker is restarting; the next renewal tries again
+    }
+  }
+
+  // Chrome closes a port that has been open a few minutes, and closing it takes
+  // away the worker's reason to stay alive, so it is replaced before then.
+  function renewPort() {
+    if (!awake) return;
+    if (keepPort && Date.now() - portOpenedAt < 240000) return;
+    try { keepPort?.disconnect(); } catch { /* already gone */ }
+    openPort();
+  }
+
+  function stayAwake() {
+    if (awake++) return;
+    openPort();
+
+    // The lock is held for as long as the callback's promise is unsettled, so
+    // hold on to its resolver. A run can finish before the lock is granted, so
+    // a release asked for early is remembered and applied on arrival.
+    let releasedEarly = false;
+    releaseLock = () => { releasedEarly = true; };
+    // Shared, so two tabs of the same site can each hold it: an exclusive lock
+    // would leave the second run queued behind the first and unprotected.
+    navigator.locks?.request('criteria-catcher-run', { mode: 'shared' }, () => new Promise((done) => {
+      if (releasedEarly) return done();
+      releaseLock = done;
+    })).catch(() => { /* locks unavailable: the worker pacing still applies */ });
+  }
+
+  function letSleep() {
+    if (awake > 0) awake--;
+    if (awake) return;
+    releaseLock?.();
+    releaseLock = null;
+    try { keepPort?.disconnect(); } catch { /* already gone */ }
+    keepPort = null;
+  }
+
   // Chrome clamps this page's timers once the tab is behind - to about one a
   // second, and to one a minute after a few minutes hidden - so a fill driven by
   // setTimeout crawls and then appears to stop. The extension's service worker
@@ -25,6 +87,7 @@
   // rounded up rather than made into a message each.
   async function wait(ms) {
     if (document.hidden && ms > 0) {
+      renewPort();
       try {
         await chrome.runtime.sendMessage({ type: 'SLEEP', ms: Math.max(ms, 250) });
         return;
@@ -156,6 +219,13 @@
     return value.match(UUID)?.[0] || value || null;
   }
 
+  function stripHeading(text, heading) {
+    const h = (heading || '').replace(/\s+/g, ' ').trim();
+    const t = (text || '').trim();
+    if (!h || !t.toLowerCase().startsWith(h.toLowerCase())) return t;
+    return t.slice(h.length).replace(/^[:\s]+/, '').trim();
+  }
+
   // Read a read-only labelled block, e.g. the "Sector" heading and the value
   // rendered under its description. Headings vary in punctuation
   // ("Correction Feedback:"), so compare without a trailing colon.
@@ -184,7 +254,10 @@
       if (chip) return chip.textContent.trim() || null;
       const text = parts.map((p) => (p.innerText || p.textContent || '').trim())
         .filter(Boolean).join('\n').trim();
-      if (text) return text;
+      // A value area that repeats its own heading would report "Task Sector" as
+      // the sector. Whatever the page calls the field, only its value is wanted.
+      const value = stripHeading(text, head.textContent);
+      if (value) return value;
     }
 
     // Only fall back to the whole parent when this heading owns it. A heading
@@ -358,18 +431,29 @@
     const started = pending.length;
     if (!started) return { started: 0, answered: 0, waiting: [] };
 
-    checkProgress = { phase: 'checks', index: 0, total: started };
-    const deadline = Date.now() + timeout;
     let left = pending;
+    try {
+      checkProgress = { phase: 'checks', index: 0, total: started };
+      const SLICE = 500;
+      let deadline = Date.now() + timeout;
 
-    while (left.length && Date.now() < deadline) {
-      checkCancelled();
-      await wait(500);
-      left = left.filter((p) => !checkFinished(p.field));
-      checkProgress = { phase: 'checks', index: started - left.length, total: started };
+      while (left.length && Date.now() < deadline) {
+        checkCancelled();
+        const before = Date.now();
+        await wait(SLICE);
+        // A slice that took far longer than it asked for means the tab was
+        // suspended, not that the server was slow. Those minutes were never the
+        // server's to spend, so hand them back - otherwise a catch left alone in a
+        // background tab runs out of patience on checks it never actually waited
+        // for, and reads a page whose answers are still on their way.
+        const lost = Date.now() - before - SLICE;
+        if (lost > 2000) deadline += lost;
+        left = left.filter((p) => !checkFinished(p.field));
+        checkProgress = { phase: 'checks', index: started - left.length, total: started };
+      }
+    } finally {
+      checkProgress = null;
     }
-
-    checkProgress = null;
     return {
       started,
       answered: started - left.length,
@@ -822,7 +906,18 @@
 
   /* ---------- operations ---------- */
 
-  async function extract(options = {}) {
+  // Everything below runs for as long as the page takes, so hold the tab awake
+  // for the whole of it rather than per step.
+  async function extract(options) {
+    stayAwake();
+    try {
+      return await readPage(options || {});
+    } finally {
+      letSleep();
+    }
+  }
+
+  async function readPage(options = {}) {
     const mode = options.mode || detectMode().mode;
 
     // Anything still collapsed is invisible to every reader below, including the
@@ -863,6 +958,10 @@
     else if (notStartedYet) checksSkipped = 'refinement task not written yet';
     else if (!promptText()) checksSkipped = 'no prompt yet';
     else checks = await runFeedbackChecks();
+
+    // A verdict that lands while the checks are answering can mount inside a
+    // section that was shut, or that did not exist during the first sweep.
+    if (checks?.started) await expandEverything();
 
     // The rubric being revised is the read-only copy, so fall back to that.
     let criteriaSource = 'form';
@@ -919,6 +1018,9 @@
     if (list.length) content.fields = list;
     const errors = readErrorBlocks();
     if (errors.length) content.errors = errors;
+    // Say so in the content itself, not only in the panel: a block that is
+    // copied away should admit that it was read before every check had answered.
+    if (checks?.waiting?.length) content.pendingChecks = checks.waiting;
 
     const data = {};
     if (mode) data.mode = mode;
@@ -971,6 +1073,7 @@
     const gap = Math.max(0, Number(options.gap ?? 2000)); // pause after each field
     busy = true;
     cancelled = false;
+    stayAwake();
     progress = { index: 0, total: rows.length, phase: 'starting' };
 
     const skippedFields = [];
@@ -1040,6 +1143,7 @@
     } finally {
       busy = false;
       progress = null;
+      letSleep();
     }
 
     return {

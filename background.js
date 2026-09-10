@@ -34,6 +34,16 @@ chrome.action.onClicked.addListener((tab) => {
 // The reply is a message, and messages are delivered to a hidden page promptly.
 const MAX_SLEEP = 60000;
 
+// A page with a run under way holds a port open for the whole of it. Nothing is
+// ever sent down it: it exists so the worker is never idle while a page is
+// depending on it to keep time, since an idle worker is shut down within half a
+// minute and its pending replies go with it. The page renews the port before
+// Chrome's own limit on how long one may stay open.
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'keepalive') return;
+  port.onDisconnect.addListener(() => { /* the run ended, or the page went */ });
+});
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type !== 'SLEEP') return undefined;
   const ms = Math.min(Math.max(Number(msg.ms) || 0, 0), MAX_SLEEP);

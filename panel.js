@@ -9,6 +9,7 @@ let poller = null;
 let modeTouched = false;   // once the user picks, stop auto-selecting over them
 let caught = null;         // the last payload read off the page
 let sessionTabId = null;   // the tab this panel session belongs to
+const catching = new Set(); // tabs with a catch still under way
 
 // A catch swaps the result for shimmering placeholders; a fill covers the panel
 // and locks the form until it finishes.
@@ -73,14 +74,16 @@ async function activeTab() {
 
 // Inject on demand (activeTab) rather than running on every page. Try talking to
 // an already-injected worker first so polling does not re-inject every time.
-async function send(message) {
-  const tab = await activeTab();
+// A job that takes a while must keep talking to the tab it began on, not to
+// whichever tab happens to be in front by the time it answers.
+async function send(message, tabId = null) {
+  const id = tabId ?? (await activeTab()).id;
   let res;
   try {
-    res = await chrome.tabs.sendMessage(tab.id, message);
+    res = await chrome.tabs.sendMessage(id, message);
   } catch {
-    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
-    res = await chrome.tabs.sendMessage(tab.id, message);
+    await chrome.scripting.executeScript({ target: { tabId: id }, files: ['content.js'] });
+    res = await chrome.tabs.sendMessage(id, message);
   }
   if (!res) throw new Error('No response from the page.');
   if (!res.ok) throw new Error(res.error);
@@ -100,12 +103,28 @@ const LABELS = {
 };
 
 // One plain-text block, in the order the fields are asked for.
+//
+// Sector and its neighbours lead. They are the one short line that says which
+// task this is, and behind a page of reviewer notes and failed checks that line
+// was being scrolled past unread.
 function renderContent(c) {
   const out = [];
   const block = (title, body) => {
     if (body === null || body === undefined || body === '') return;
     out.push(`${title}\n${'-'.repeat(title.length)}\n${body}\n`);
   };
+
+  const head = [];
+  for (const key of ['sector', 'occupation', 'tier', 'areasOfFocus']) {
+    if (c[key]) head.push(`${LABELS[key]}: ${c[key]}`);
+  }
+  if (head.length) out.push(head.join('\n') + '\n');
+
+  // A block caught before every check answered should say so on its face,
+  // wherever it is pasted, rather than looking like a finished reading.
+  if (c.pendingChecks?.length) {
+    block('Checks still waiting when this was caught', c.pendingChecks.join('\n'));
+  }
 
   if (c.taskNotes?.length) {
     const notes = c.taskNotes
@@ -120,12 +139,6 @@ function renderContent(c) {
       .join('\n\n');
     block('Failed checks', errs);
   }
-
-  const head = [];
-  for (const key of ['sector', 'occupation', 'tier', 'areasOfFocus']) {
-    if (c[key]) head.push(`${LABELS[key]}: ${c[key]}`);
-  }
-  if (head.length) out.push(head.join('\n') + '\n');
 
   block('Prompt', c.prompt);
 
@@ -283,6 +296,21 @@ for (const r of modeRadios) {
 }
 
 catchBtn.addEventListener('click', async () => {
+  // A catch belongs to the tab it was started on, and it can easily outlast the
+  // user's attention - waiting on the feedback checks alone takes minutes. So it
+  // keeps talking to that tab, and everything it has to say at the end goes to
+  // that tab's session. Painting a result over whichever tab happens to be in
+  // front when the answer lands is how a page came to show a reading of some
+  // other page, taken before its checks were in.
+  let ranOn;
+  try {
+    ranOn = (await activeTab()).id;
+  } catch (e) {
+    return setStatus(e.message, 'err');
+  }
+  const mine = () => sessionTabId === ranOn;
+
+  catching.add(ranOn);
   setStatus('Reading page…');
   showTab('tabCatch');
   showSkeleton(true);
@@ -291,9 +319,9 @@ catchBtn.addEventListener('click', async () => {
   // The checks are answered by the server, so say what is being waited on.
   const watching = setInterval(async () => {
     try {
-      const res = await send({ type: 'PING' });
+      const res = await send({ type: 'PING' }, ranOn);
       const c = res.checkProgress;
-      if (c) setStatus(`Running the feedback checks — ${c.index} of ${c.total} answered…`);
+      if (c && mine()) setStatus(`Running the feedback checks — ${c.index} of ${c.total} answered…`);
     } catch { /* the next tick tries again */ }
   }, 900);
 
@@ -301,10 +329,16 @@ catchBtn.addEventListener('click', async () => {
     const { data, meta } = await send({
       type: 'EXTRACT',
       options: { mode: selectedMode(), runChecks: $('runChecks').checked }
-    });
+    }, ranOn);
     data.caughtAt = stamp();
-    showResult(data);
-    save();
+
+    if (mine()) {
+      showResult(data);
+      save();
+    } else {
+      // File it under the tab it came from, so it is waiting there on return.
+      await saveCaughtFor(ranOn, data);
+    }
 
     const c = data.content || {};
     const extras = [];
@@ -323,14 +357,25 @@ catchBtn.addEventListener('click', async () => {
     // Only meaningful when the criteria came off the form itself.
     const short = fromRubric ? 0 : (meta?.sections ?? data.criteria.length) - data.criteria.length;
     if (short > 0) msg += `\n${short} section${short === 1 ? '' : 's'} would not open and stayed empty.`;
-    setStatus(msg, short > 0 ? '' : 'ok');
-    refresh();
+    // Never let a reading that went ahead without every answer pass for a full one.
+    const waiting = meta?.checks?.waiting || [];
+    if (waiting.length) {
+      msg += `\nRead before ${waiting.length} check${waiting.length === 1 ? '' : 's'} answered: `
+        + `${waiting.join(', ')}. Catch again once they land.`;
+    }
+    if (mine()) {
+      setStatus(msg, short > 0 || waiting.length ? '' : 'ok');
+      refresh();
+    }
   } catch (e) {
-    setStatus(e.message, 'err');
+    if (mine()) setStatus(e.message, 'err');
   } finally {
     clearInterval(watching);
-    catchBtn.disabled = false;
-    showSkeleton(false);
+    catching.delete(ranOn);
+    if (mine()) {
+      catchBtn.disabled = false;
+      showSkeleton(false);
+    }
   }
 });
 
@@ -524,6 +569,15 @@ function save() {
   });
 }
 
+// A catch that finishes after the user has moved on still has somewhere to go:
+// straight into the originating tab's stored session, without disturbing the
+// session on screen.
+async function saveCaughtFor(tabId, data) {
+  const key = `tab:${tabId}`;
+  const bag = await store.get(key);
+  await store.set({ [key]: { ...(bag[key] || {}), caught: data } });
+}
+
 async function loadSession(tabId) {
   sessionTabId = tabId;
   modeTouched = false;
@@ -547,10 +601,14 @@ async function loadSession(tabId) {
     $('result').hidden = true;
   }
 
-  showSkeleton(false);
   setRunning(false);
   showBusy(false); // a run belongs to the tab that started it, not to this view
-  setStatus('');
+  // A catch started on this tab may still be running - it owns the button and
+  // the placeholders until it answers.
+  const stillCatching = catching.has(tabId);
+  catchBtn.disabled = stillCatching;
+  showSkeleton(stillCatching);
+  setStatus(stillCatching ? 'Reading page…' : '');
   // Last, because showTab saves: everything above must already be this tab's.
   showTab(s.tab || 'tabCatch');
 }

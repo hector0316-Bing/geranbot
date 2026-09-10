@@ -122,23 +122,33 @@ While it runs the button turns into **Stop** and the status line shows
 `typing 4/12…`. You can close the panel; the run continues, and reopening it
 picks the progress back up.
 
-**Switching tabs mid-run.** Chrome clamps a hidden tab's timers to about one a
-second, and to one a minute once it has been hidden a few minutes. A fill paced
-by the page's own `setTimeout` therefore crawls and then appears to stop.
+**Switching tabs mid-run.** A run — a fill or a catch — keeps going at full speed
+while you work in another tab. Chrome works against that in two ways, and both
+are answered.
 
-So the page does not keep its own time while it is behind: it asks the extension's
-service worker to do the waiting and carries on when the reply arrives. A service
-worker is not a tab and is not clamped, and messages reach a hidden page without
-being clamped either. If the worker cannot answer, the page falls back to its own
-timer — slow beats stopped. In front, nothing is sent to the worker at all.
+*It slows a hidden tab's timers* to about one a second, and to one a minute once
+the tab has been hidden a few minutes, so pacing driven by the page's own
+`setTimeout` crawls and then looks stopped. The page therefore does not keep its
+own time while it is behind: it asks the extension's service worker to do the
+waiting and carries on when the reply arrives. A service worker is not a tab and
+is not clamped, and messages reach a hidden page without being clamped either. In
+front, nothing is sent to the worker at all.
+
+*It freezes background tabs outright*, and a frozen page runs no script at all —
+which is what a fill that halts the instant you look away, and resumes untouched
+the instant you come back, actually was. Chrome will not freeze a page that is
+holding a **Web Lock**, so a run takes one out and holds it for its whole length,
+and holds an open port to the service worker beside it so the worker that is
+keeping time is never shut down as idle. Both are dropped the moment the run
+ends.
 
 Waits on the page also stretch while the tab is behind, so a section that is slow
 to mount is waited for rather than declared missing. The result says when part of
 a run happened in the background.
 
-What this cannot beat is Chrome suspending the tab outright — freezing or
-discarding it under memory pressure stops all script in the page, and no
-extension can prevent that from inside. A long fill is still safest in front.
+A tab Chrome *discards* under real memory pressure is reloaded from scratch and
+takes the run with it; nothing an extension does from inside prevents that. Short
+of that, a run in the background is a run.
 
 ## Running out of sections
 
@@ -187,16 +197,22 @@ in its corner; the box flashes green when the clipboard has it.
   `<UID>_<time caught>` so a pasted block identifies itself without the UID box
   beside it, then in this order:
 
-  1. Task notes — Reviewer Feedback, Reviewer Note, Rebuttal Note, Automated
+  1. Sector, Occupation, Tier, Areas of Focus of Feedback — the one short line
+     that says which task this is, kept at the top where it is read. Refinement
+     calls the sector "Task Sector" and the occupation "Task Occupation";
+     they are the same fields as Submission's and Review's "Sector" and
+     "Occupation", and are labelled that way here so a caught block reads the
+     same whichever page it came off
+  2. Checks still waiting, if the page was read before every check had answered
+  3. Task notes — Reviewer Feedback, Reviewer Note, Rebuttal Note, Automated
      feedback, each with its timestamp
-  2. Failed checks — any check panel the page paints red
-  3. Sector, Occupation, Tier, Areas of Focus of Feedback
-  4. Prompt
-  5. Criteria — number, text and weight only, never the weight guidance text
-  6. O*NET Occupation, Tasks and Skills (Submission and Review only)
-  7. The four task questions — input file count, multi-modal, web search, manual
+  4. Failed checks — any check panel the page paints red
+  5. Prompt
+  6. Criteria — number, text and weight only, never the weight guidance text
+  7. O*NET Occupation, Tasks and Skills (Submission and Review only)
+  8. The four task questions — input file count, multi-modal, web search, manual
      duration
-  8. Every auto-evaluation result — Golden Solution, Difficulty, input/output
+  9. Every auto-evaluation result — Golden Solution, Difficulty, input/output
      check, Self-Contained check, Verifier, Audit, Audit: Rubric and Golden
      Solution Alignment, Safety Check, LLM generated files check, Rubric Quality
      Check, Golden solution leakage, Rubric golden alignment, Rubric value
@@ -223,8 +239,23 @@ not re-run them.
 
 The answers can take a while, so the status line counts them off — *"Running the
 feedback checks — 2 of 5 answered…"* — and the Catch button is held until they
-are in. If one never answers, the catch goes ahead after three minutes and the
-result says which was still outstanding.
+are in.
+
+Three minutes is as long as it waits. That is three minutes of *waiting*, not of
+wall clock: if the tab is suspended mid-wait, the time it was suspended for is
+handed back rather than spent, because the page was not watching for an answer
+while it was frozen. A catch left in a background tab therefore comes back having
+waited as long as one left in front.
+
+If a check still never answers, the catch goes ahead without it and says so —
+in the status line (*"Read before 2 checks answered: Prompt Quality, Name
+Check"*) and again at the top of the Content block under **Checks still waiting
+when this was caught**, so a block that is copied elsewhere carries the caveat
+with it. Catch again once they land.
+
+A catch belongs to the tab it was started on. Move to another tab while it is
+waiting and it keeps reading that page, not the one now in front; when it
+finishes it files the result in that tab's own session, ready when you go back.
 
 Nothing is pressed when there is nothing to judge:
 
@@ -264,7 +295,8 @@ back:
     "prompt": "Priya has me picking how we claw back…",
     "criteria": [{ "n": 1, "criterion": "The remaining work content is…", "weight": 2 }],
     "onetOccupation": "47-1011.00|First-Line Supervisors of Construction Trades…",
-    "fields": [{ "label": "Safety Check", "value": "Safety screen: nothing blocking." }]
+    "fields": [{ "label": "Safety Check", "value": "Safety screen: nothing blocking." }],
+    "pendingChecks": ["Prompt Quality"]
   },
   "criteria": [{ "criterion": "The remaining work content is…", "weight": 2 }]
 }
@@ -276,9 +308,13 @@ payload can be fed straight back in.
 ### Where each part comes from
 
 - **UID** — the value beside the `UID:` label.
-- **Sector** — the "Sector" heading on Submission and Review; Refinement calls it
-  "Task Sector" and carries a "Task Occupation" beside it, both of which are read
-  too.
+- **Sector** — the "Sector" heading on Submission and Review; Refinement calls
+  the same field "Task Sector", and its occupation "Task Occupation". The page's
+  wording is only how it is found: both are reported as `sector` and
+  `occupation`, and printed as **Sector** and **Occupation**, so one page's
+  reading can be compared with another's. A value area that repeats its own
+  heading has it stripped, so the sector is the sector and never the words "Task
+  Sector".
 - **Tier / Areas of Focus of Feedback** — Refinement's "Tier Type" and "Areas of
   Focus of Feedback" headings.
 - **Task notes** — accordions outside the criteria list whose title mentions
@@ -301,6 +337,8 @@ payload can be fed straight back in.
   `Criterion N - weight W` heading with the paragraphs under it. The status line
   says which of the two it used, and the JSON is the same either way, so it can
   be pasted straight back into the empty list.
+- **pendingChecks** — the checks that had not answered by the time the page was
+  read. Absent, as everything absent is, when there were none.
 - **Everything else** — matched by the field's **label**, never its
   `data-testid`: the hashes in `field-code-194d3` are regenerated and cannot be
   relied on. Values come from a `<pre>` for auto-eval output, from the chip
@@ -395,7 +433,8 @@ than failing the run.
 
 - [manifest.json](manifest.json) — MV3 manifest, `activeTab` + `scripting` + `storage` + `sidePanel`
 - [background.js](background.js) — opens the side panel when the toolbar icon is
-  clicked, one per tab, and keeps time for a page whose tab is in the background
+  clicked, one per tab; keeps time for a page whose tab is in the background, and
+  holds the keepalive port a running page connects to
 - [icon.svg](icon.svg) — the toolbar icon: a person at a monitor. Chrome only
   takes raster icons, so [tools/make-icons.mjs](tools/make-icons.mjs) renders it
   to `icons/icon{16,32,48,128}.png`. Edit the SVG, then re-run:
