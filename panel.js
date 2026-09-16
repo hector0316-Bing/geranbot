@@ -126,11 +126,25 @@ function renderContent(c) {
     block('Checks still waiting when this was caught', c.pendingChecks.join('\n'));
   }
 
+  // The newest note says what the task is actually waiting on. It used to take
+  // its turn in a list, where it read as just another note - and when the
+  // auto-evaluation had failed it was not there at all.
   if (c.taskNotes?.length) {
-    const notes = c.taskNotes
-      .map((n) => `[${n.title}${n.time ? ` - ${n.time}` : ''}]\n${n.text}`)
-      .join('\n\n');
-    block('Task notes', notes);
+    const latest = c.taskNotes.find((n) => n.latest);
+    const rest = c.taskNotes.filter((n) => n !== latest);
+
+    if (latest) {
+      const meaning = /automated/i.test(latest.title)
+        ? 'The auto-evaluation did not pass - its failures are what this task is waiting on.'
+        : 'The auto-evaluation passed - this note is what this task is waiting on.';
+      block(`Latest note - ${latest.title}${latest.time ? ` (${latest.time})` : ''}`,
+        `${meaning}\n\n${latest.text}`);
+    }
+
+    if (rest.length) {
+      block(latest ? 'Earlier task notes' : 'Task notes',
+        rest.map((n) => `[${n.title}${n.time ? ` - ${n.time}` : ''}]\n${n.text}`).join('\n\n'));
+    }
   }
 
   if (c.errors?.length) {

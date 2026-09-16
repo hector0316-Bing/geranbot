@@ -299,10 +299,36 @@
     return { title: title || full, time: rest || null };
   }
 
-  // keepFailedAutomated: on a refinement already under way the automated run is
-  // the feedback that matters, failures included - dropping it would leave that
-  // page with no automated feedback at all.
-  async function readNotes({ keepFailedAutomated = false } = {}) {
+  // Note timestamps read "9/2/26, 5:54 PM". Parsed by hand rather than left to
+  // Date, which is free to read 9/2 either way round.
+  function noteWhen(time) {
+    const m = (time || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4}),?\s+(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+    if (!m) return 0;
+    const year = Number(m[3]) < 100 ? 2000 + Number(m[3]) : Number(m[3]);
+    let hour = Number(m[4]);
+    const half = (m[6] || '').toUpperCase();
+    if (half === 'PM' && hour !== 12) hour += 12;
+    if (half === 'AM' && hour === 12) hour = 0;
+    return new Date(year, Number(m[1]) - 1, Number(m[2]), hour, Number(m[5])).getTime();
+  }
+
+  // The newest note says what the task is waiting on. An automated run only
+  // carries a timestamp when it has something to report - a passing one is the
+  // standing "All checks have passed" - so the newest timestamped note is the
+  // automated run exactly when the auto-evaluation did not pass, and the
+  // reviewer's note when it did.
+  function markLatest(notes) {
+    let best = null;
+    let bestWhen = 0;
+    for (const n of notes) {
+      const when = noteWhen(n.time);
+      if (when > bestWhen) { bestWhen = when; best = n; }
+    }
+    if (best) best.latest = true;
+    return best;
+  }
+
+  async function readNotes() {
     const out = [];
     for (const btn of document.querySelectorAll('button[data-radix-collection-item]')) {
       if (btn.closest(INSTANCE)) continue; // criteria sections are handled separately
@@ -321,9 +347,9 @@
       const text = (region?.innerText || region?.textContent || '').trim();
       if (!text) continue;
 
-      // An auto-eval that reports failures is noise here, not task feedback -
-      // except on a refinement in progress, where it is the point.
-      if (!keepFailedAutomated && /automated/i.test(title) && /fail/i.test(text)) continue;
+      // A failing automated run used to be dropped as noise. It is the opposite:
+      // when the auto-evaluation does not pass it becomes the newest note on the
+      // page, and it is the thing that says what state the task is actually in.
 
       out.push(time ? { title, time, text } : { title, text });
     }
@@ -979,7 +1005,7 @@
     // once the criteria exist; the automated run is what speaks to the task now.
     const revisionUnderWay = mode === 'refinement' && boardFilled;
 
-    const notes = await readNotes({ keepFailedAutomated: revisionUnderWay });
+    const notes = await readNotes();
     const { named, list } = readFields();
 
     // Submission and Review label it "Sector"; Refinement says "Task Sector".
@@ -997,12 +1023,24 @@
       if (text && !notes.some((n) => n.title === title)) notes.push({ title, text });
     }
 
+    // Which note is newest decides what the reader should be looking at, so work
+    // it out here, once the headed blocks have joined the accordions.
+    const latestNote = markLatest(notes);
+    const automated = notes.find((n) => /automated/i.test(n.title));
+    const autoEvalPassed = automated
+      ? !/\bfail(ed|ure|s)?\b/i.test(automated.text)
+      : null;
+
     if (!criteria.length && !uid && !notes.length && !sector && !list.length) {
       throw new Error('Nothing found on this page - no criteria, UID, sector or task notes.');
     }
 
     const content = {};
     if (notes.length) content.taskNotes = notes;
+    if (latestNote) {
+      content.latestNote = { title: latestNote.title, time: latestNote.time || null };
+    }
+    if (autoEvalPassed !== null) content.autoEvalPassed = autoEvalPassed;
     if (sector) content.sector = sector;
     if (occupation) content.occupation = occupation;
     if (tier) content.tier = tier;

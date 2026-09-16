@@ -224,6 +224,27 @@ each label ("This box will only populate once the auto-evaluations finish…",
 is left out rather than printed empty, and an auto-eval box still showing its
 "No code provided" placeholder counts as absent.
 
+### Which note the task is waiting on
+
+The newest note says what state a task is actually in, so the caught block leads
+with it under **Latest note** and the rest follow as **Earlier task notes**.
+
+An automated run only carries a timestamp when it has something to report — a
+passing one is the standing "All checks have passed" with no time against it. So
+the newest timestamped note is the automated run exactly when the
+auto-evaluation did not pass, and the reviewer's note when it did, and the block
+says which:
+
+- *Latest note — Automated feedback (9/2/26, 5:54 PM)* → the auto-evaluation did
+  not pass, and its failures are what the task is waiting on.
+- *Latest note — Reviewer Feedback (9/2/26, 4:15 AM)* → the auto-evaluation
+  passed, and the reviewer's note is what the task is waiting on.
+
+Newest is decided on the timestamp, not on the kind of note, so a reviewer's
+reply after a failed run still leads. A failing automated run **is kept**: it
+used to be discarded as noise, which threw away the one note that mattered
+precisely when it mattered.
+
 ## Running the checks
 
 Each check on the page — O*NET Compliance, Prompt Quality, Input Files Quality,
@@ -322,10 +343,8 @@ payload can be fed straight back in.
   Feedback" and "Agentic Rubric Quality Check" blocks, which are not accordions.
   **On a Refinement page whose criteria are already written**, the correction
   feedback is left out: it describes the task as it was before that work, so it
-  is stale once the criteria exist. The automated run is taken instead, failures
-  included — on a revision under way those failures are the point, and dropping
-  them would leave that page with no automated feedback at all. Before any work,
-  the correction feedback is what matters and it is kept as before.
+  is stale once the criteria exist. Before any work, the correction feedback is
+  what matters and it is kept.
   Collapsed ones are opened to read them. The header runs label and timestamp
   together ("Reviewer Feedback9/2/26, 4:15 AM"), so they are split into `title`
   and `time`. **An "Automated feedback" note whose body mentions a failure is
