@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Criteria Catcher",
-  "version": "1.3.0",
-  "description": "Catch a task page into JSON, or fill its criteria back in one at a time.",
+  "version": "1.4.0",
+  "description": "Catch a Geranium or Rudder task page into JSON, or fill its answers back in one field at a time.",
   "permissions": ["activeTab", "scripting", "storage", "sidePanel"],
   "icons": {
     "16": "icons/icon16.png",

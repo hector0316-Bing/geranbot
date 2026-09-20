@@ -9,10 +9,12 @@
   <div class="top">
     <header>
       <h1>Criteria Catcher</h1>
+      <button id="projectChip" class="chip" type="button" hidden
+              title="Change the project">Geranium</button>
       <span id="pageInfo" class="badge">checking…</span>
     </header>
 
-    <div class="tabs" role="tablist">
+    <div id="tabs" class="tabs" role="tablist">
       <button id="tabCatch" class="tab" type="button" role="tab"
               aria-selected="true" aria-controls="viewCatch">Catch</button>
       <button id="tabInput" class="tab" type="button" role="tab"
@@ -20,19 +22,50 @@
     </div>
   </div>
 
+  <section id="viewProject" class="view pick" hidden>
+    <h2 class="pick-title">Which project is this task?</h2>
+    <p class="pick-lead">Asked once per tab. The panel changes to match.</p>
+
+    <div class="picks">
+      <button class="pick-card" type="button" data-project="geranium">
+        <span class="pick-name">Geranium</span>
+        <span class="pick-note">Criteria and rubrics — Submission, Review, Refinement.
+          Catches the criteria list and fills it back in, one field at a time.</span>
+      </button>
+      <button class="pick-card" type="button" data-project="rudder">
+        <span class="pick-name">Rudder</span>
+        <span class="pick-note">Preference comparisons — Response A against Response B.
+          Catches the whole task and types the answers back in.</span>
+      </button>
+    </div>
+
+    <p id="pickHint" class="hint"></p>
+  </section>
+
   <section id="viewCatch" class="view" role="tabpanel" aria-labelledby="tabCatch">
     <div class="catch-head">
-    <div class="modes" role="radiogroup" aria-label="Page type">
-      <label><input type="radio" name="mode" value="submission"><span>Submission</span></label>
-      <label><input type="radio" name="mode" value="review"><span>Review</span></label>
-      <label><input type="radio" name="mode" value="refinement"><span>Refinement</span></label>
-    </div>
-    <p id="modeHint" class="hint"></p>
+    <div class="only-geranium">
+      <div class="modes" role="radiogroup" aria-label="Page type">
+        <label><input type="radio" name="mode" value="submission"><span>Submission</span></label>
+        <label><input type="radio" name="mode" value="review"><span>Review</span></label>
+        <label><input type="radio" name="mode" value="refinement"><span>Refinement</span></label>
+      </div>
+      <p id="modeHint" class="hint"></p>
 
-    <label class="check">
-      <input type="checkbox" id="runChecks" checked>
-      Run the feedback checks first
-    </label>
+      <label class="check">
+        <input type="checkbox" id="runChecks" checked>
+        Run the feedback checks first
+      </label>
+    </div>
+
+    <div class="only-rudder">
+      <p id="stageHint" class="hint">The task, its notes and any answers already on it.</p>
+
+      <label class="check">
+        <input type="checkbox" id="withGuidelines">
+        Include the rating guidelines in full
+      </label>
+    </div>
 
     <button id="catch" class="primary">Catch criteria</button>
     </div>
@@ -79,6 +112,18 @@
         <pre class="part-body" id="contentValue"></pre>
       </div>
 
+      <div class="part only-rudder" id="answersPart" role="button" tabindex="0"
+           title="Click to copy the answers">
+        <div class="part-head">
+          <span>Answers</span>
+          <span class="copy-icon" aria-hidden="true">
+            <svg class="icon-copy" width="13" height="13" viewBox="0 0 256 256" fill="currentColor"><path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z"></path></svg>
+            <svg class="icon-check" width="13" height="13" viewBox="0 0 256 256" fill="currentColor"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"></path></svg>
+          </span>
+        </div>
+        <pre class="part-body mono" id="answersValue"></pre>
+      </div>
+
       <div class="links">
         <button id="copyJson" class="link">Copy JSON</button>
         <button id="download" class="link">Download JSON</button>
@@ -88,16 +133,7 @@
   </section>
 
   <section id="viewInput" class="view" role="tabpanel" aria-labelledby="tabInput" hidden>
-    <textarea id="json" spellcheck="false" placeholder='Paste or upload criteria like this:
-
-"criteria": [
-  { "1": "Criterion text, at least 20 characters.", "weight": 2 },
-  { "2": "A failure mode carries a negative weight.", "weight": -3 }
-]
-
-The outer { } are optional, and so is the last ]. "criterion"
-works in place of the number. Order decides which section
-each row goes to.'></textarea>
+    <textarea id="json" spellcheck="false"></textarea>
 
     <div class="links">
       <button id="loadFile" class="link">Open file…</button>
@@ -131,10 +167,16 @@ each row goes to.'></textarea>
         </select>
       </label>
     </div>
-    <label class="check">
+    <label class="check only-geranium">
       <input type="checkbox" id="removeExtras" checked>
       Add or delete sections to match the JSON
     </label>
+
+    <p class="hint only-rudder">
+      Every key in the JSON is answered; anything left out, empty or
+      <code>null</code> is left alone. Ratings take the value or its wording,
+      flags take a list of their labels.
+    </p>
 
     <button id="apply" class="primary">Type into page</button>
   </section>

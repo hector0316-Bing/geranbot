@@ -1,8 +1,9 @@
 # Criteria Catcher
 
-Chrome extension (MV3) that runs in the browser's **side panel**: **Catch
-criteria** reads a task page into a copyable block, and **Paste into page**
-fills the criteria back in one field at a time.
+Chrome extension (MV3) that runs in the browser's **side panel**. It reads a
+task page into one copyable block, and writes an answer back into it one field
+at a time, at a human pace. Two projects are handled: **Geranium**'s criteria
+and rubric pages, and **Rudder**'s preference comparisons.
 
 ## Install
 
@@ -18,6 +19,27 @@ the page scrolls. Drag its inner edge to resize. Needs Chrome 116 or newer.
 
 Nothing runs until you open the panel — the page script is injected on demand
 under `activeTab`, so the extension has no access to any other site.
+
+## Two projects
+
+Before anything else the panel asks which project the task belongs to, and the
+answer holds for that tab:
+
+- **Geranium** — the criteria and rubric pages: Submission, Review, Refinement.
+  Everything from here down to **Field names** is about these.
+- **Rudder** — preference comparisons, where two model responses are rated side
+  by side against a scale. **Rudder tasks**, near the end, is about those.
+
+The page usually says which it is — Geranium by its criteria list, Rudder by its
+split document review — and whichever it looks like is marked **on this page**
+in the chooser, so the answer is normally a confirmation rather than a decision.
+It stays a choice because the two readers have nothing in common: the wrong one
+on a page reads nothing and fills nothing, and it is better to be asked than to
+find that out from an empty result.
+
+The chip beside the title says which project the tab is on, and clicking it goes
+back to the chooser. Everything the two word differently — the Catch button, the
+input template, the options each offers — changes with it.
 
 ## One session per tab
 
@@ -46,7 +68,7 @@ finishes or is stopped, so the JSON cannot change underneath a run in progress.
 
 Both respect `prefers-reduced-motion`.
 
-## Page type
+## Page type (Geranium)
 
 Three radio buttons at the top — **Submission**, **Review**, **Refinement** —
 set from the page itself when the popup opens:
@@ -437,10 +459,112 @@ If a page has no such wrappers, it falls back to the first `textarea`
 A key with no matching field on the page is reported in the status line rather
 than failing the run.
 
+## Rudder tasks
+
+A Rudder task is a different page altogether: the conversation and the two
+candidate responses on the left, a form of rating scales, failure-mode flag
+lists and written explanations on the right, and the task notes in a sidebar of
+their own. There is no criteria list, so none of the criteria handling above
+applies to it — but the field wrappers, the accordions and the typing behave
+exactly as they do on a Geranium page, and are shared rather than written twice.
+
+### What a catch takes
+
+**Catch task** reads the whole task into one copyable block, in this order:
+
+1. The page title and the **stage** — *first pass* while nothing has been
+   answered and there are no notes, *revision* once either is true
+2. **Latest note**, then any earlier ones, each with its timestamp — and the
+   question a reviewer's note carries underneath it ("Do you disagree with the
+   reviewer feedback?"), with whether it is ticked
+3. **Context**, **Response A** and **Response B** — the left panel's documents,
+   each under the heading the page shows it with
+4. Every section of the form, and under each one every question: its key, its
+   label, what it asks, its options, and whatever is answered right now
+
+The first time round the form is empty, so the block is the task plus a blank
+answer template. Once the task comes back for revision, the reviewer's note and
+the answers already on the page are both in it, so the next answer is edited
+from what was actually submitted rather than written again from nothing.
+
+**Include the rating guidelines in full** adds each axis's standing guidance —
+what Constraint Following covers and does not cover, and so on for the rest. It
+is off by default: it is the same several pages on every task of the project,
+and it roughly doubles the length of the block.
+
+The notes sidebar is opened if it is shut, and every accordion is expanded
+first — a closed one has no content in the DOM to be read.
+
+### The answers box
+
+A third box holds the answers as JSON: every key the page asks for, in the order
+it asks for them, with whatever is already filled in.
+
+```json
+{
+  "answers": {
+    "constraint_following_response_a": "5",
+    "constraint_following_checkboxes_response_a": [],
+    "constraint_following_flag_missing_response_a": "false",
+    "overall_rationale_response_a": "The response is mostly helpful…",
+    "preference": "A < B",
+    "preference_explanation": "Both responses recast the earlier advice…"
+  }
+}
+```
+
+Click it to copy, or press **Send answers to input** to drop it into the input
+box. Edit the values there, press **Type into page**, and each one is written
+back. A bare object without the `answers` wrapper works too, as does a list of
+`{ "key": …, "answer": … }` rows.
+
+### Writing answers back
+
+Keys are the page's own field wrappers: `data-testid="field-preference"` is
+`"preference"`. Only what the JSON actually says is written — a key left out,
+left empty or set to `null` leaves that question exactly as it was, so a
+correction can name the three fields it changes and touch nothing else.
+
+| the page asks for | write | for example |
+|---|---|---|
+| a rating or a single choice | the stored value, the wording on screen, or the part before the colon | `4`, `"not_applicable"`, `"N/A"`, `"A > B"`, `"Yes"` |
+| failure-mode flags | the labels to tick, as a list | `["Contains a false claim"]`, `[]` |
+| an explanation | the text | `"The response is mostly helpful…"` |
+
+An exact stored value is matched before anything looser, so `"A > B"` is never
+taken for `"A >> B"`. `Yes`/`No` and `true`/`false` are read as each other,
+since that is how the flag questions are usually spoken. A flag name may be
+shortened, as long as what is left is long enough to mean only one of them.
+
+Ticking is stated in full: every flag named is put on and **every other one is
+taken off**, so the page ends up saying exactly what the answer says.
+
+Answering one question can bring another into being — the correctness sub-flags
+exist only once the status says *Flagged* — so a field that is not on the page
+yet is waited for rather than skipped.
+
+**Type per key** is the default here rather than paste: these answers go into a
+form a person is meant to have filled in by hand, so they are typed out at a
+human rhythm — `keydown` / `beforeinput` / `input` / `keyup` per character, with
+variable gaps, exactly as described under **The two buttons**. A rating or a
+flag gets a beat before it is clicked. **Pace** and **Gap** work the same way,
+and the status line counts `filling field 7 of 12…`.
+
+Anything that could not be written is named in the status line rather than
+passed over: a key this page does not ask for, an option that does not exist, a
+flag with no such label, a value cut to the field's limit.
+
+**Submit is never pressed.** The form is filled, and that is where it stops.
+
 ## Notes on the page it drives
 
 - **Collapsed sections are expanded first.** Radix unmounts closed accordion
   content, so a closed section has no textarea to read or type into.
+- **A rating is not an `<input>`.** Rudder's scales render as a button with
+  `role="radio"` and a hidden input beside it holding the real value; its flags
+  are divs with `role="checkbox"` and no input at all. Both are clicked and the
+  result read back off the page, since the click is the only thing the component
+  listens to.
 - **React ignores `el.value = x`.** Values go through the prototype's native
   `value` setter, which desyncs React's value tracker so the `input` event that
   follows counts as a real edit.
@@ -458,5 +582,6 @@ than failing the run.
   takes raster icons, so [tools/make-icons.mjs](tools/make-icons.mjs) renders it
   to `icons/icon{16,32,48,128}.png`. Edit the SVG, then re-run:
   `node <browser-automation>/browser.mjs about:blank --script tools/make-icons.mjs`
-- [content.js](content.js) — page side: read fields, fill values, add/delete sections
+- [content.js](content.js) — page side, both projects: read fields, fill values,
+  add/delete sections on Geranium, choose ratings and tick flags on Rudder
 - [panel.html](panel.html) / [panel.css](panel.css) / [panel.js](panel.js) — the side panel UI

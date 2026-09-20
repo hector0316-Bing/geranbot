@@ -398,6 +398,101 @@ button.link:hover { color: var(--fg); background: var(--field); }
   .pulse span { opacity: .6; transform: none; }
 }
 
+/* ---------- the project chooser ---------- */
+
+/* Which project a tab is for is decided before anything else, and the chip in
+   the header both says which it is and goes back to the choice. */
+.chip {
+  padding: 2px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--field);
+  color: var(--fg);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color .12s ease, color .12s ease;
+}
+
+.chip:hover { border-color: var(--accent); color: var(--accent); }
+.chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.pick { display: flex; flex-direction: column; }
+
+.pick-title {
+  margin: 4px 0 2px;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.pick-lead {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.picks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pick-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--field);
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .12s ease, background .12s ease;
+}
+
+.pick-card:hover { border-color: var(--accent); }
+.pick-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* The page itself usually says which project it is; that one is marked so the
+   choice is a confirmation rather than a guess. */
+.pick-card.likely { border-color: var(--accent); }
+
+.pick-card.likely .pick-name::after {
+  content: "on this page";
+  margin-left: 7px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  text-transform: none;
+  vertical-align: 1px;
+}
+
+.pick-name { font-size: 13px; font-weight: 650; }
+.pick-note { color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+
+/* Each project shows its own controls and none of the other's. */
+body[data-project="geranium"] .only-rudder,
+body[data-project="rudder"] .only-geranium { display: none !important; }
+
+.hint code {
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--field);
+  font-size: 11px;
+}
+
+/* The answers block is the long one on a Rudder catch; cap it so the buttons
+   under it stay in reach. */
+#answersValue { max-height: 260px; overflow: auto; }
+
 /* The Catch controls stay put while the caught text scrolls under them. */
 .catch-head {
   position: sticky;

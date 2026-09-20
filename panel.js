@@ -9,6 +9,8 @@ let poller = null;
 let modeTouched = false;   // once the user picks, stop auto-selecting over them
 let caught = null;         // the last payload read off the page
 let sessionTabId = null;   // the tab this panel session belongs to
+let project = null;        // which project this tab's task belongs to
+let likely = null;         // what the page itself looks like, if it says
 const catching = new Set(); // tabs with a catch still under way
 
 // A catch swaps the result for shimmering placeholders; a fill covers the panel
@@ -35,7 +37,8 @@ function showTab(which) {
   for (const [tabId, viewId] of TABS) {
     const on = tabId === which;
     $(tabId).setAttribute('aria-selected', String(on));
-    $(viewId).hidden = !on;
+    // Neither view is open while the project is still being chosen.
+    $(viewId).hidden = !on || !project;
   }
   save();
 }
@@ -47,6 +50,100 @@ function activeTabId() {
 for (const [tabId] of TABS) {
   $(tabId).addEventListener('click', () => showTab(tabId));
 }
+
+/* ---------- which project the tab is for ----------
+   Geranium's criteria pages and Rudder's preference comparisons are different
+   pages, with different forms and nothing in common to fill in. Guessing which
+   is which is how the wrong reader comes to run on a page, so the panel asks -
+   once per tab, with whichever the page already looks like marked, so the
+   answer is usually a confirmation rather than a decision. */
+
+const PROJECTS = {
+  geranium: {
+    name: 'Geranium',
+    catch: 'Catch criteria',
+    toInput: 'Send criteria to input',
+    copied: 'Criteria copied into the input box.',
+    placeholder: `Paste or upload criteria like this:
+
+"criteria": [
+  { "1": "Criterion text, at least 20 characters.", "weight": 2 },
+  { "2": "A failure mode carries a negative weight.", "weight": -3 }
+]
+
+The outer { } are optional, and so is the last ]. "criterion"
+works in place of the number. Order decides which section
+each row goes to.`
+  },
+  rudder: {
+    name: 'Rudder',
+    catch: 'Catch task',
+    toInput: 'Send answers to input',
+    copied: 'Answers copied into the input box.',
+    placeholder: `Paste or upload answers like this:
+
+"answers": {
+  "constraint_following_response_a": 4,
+  "constraint_following_checkboxes_response_a": [
+    "Length or count constraint missed"
+  ],
+  "overall_rationale_response_a": "The response is mostly helpful…",
+  "preference": "A > B"
+}
+
+Catch the task first and press "Send answers to input": that
+fills this box with the keys the page actually asks for, and
+with whatever is already answered on it.`
+  }
+};
+
+function markLikely() {
+  for (const card of document.querySelectorAll('.pick-card')) {
+    card.classList.toggle('likely', likely?.project === card.dataset.project);
+  }
+  $('pickHint').textContent = likely?.project
+    ? `This page looks like ${PROJECTS[likely.project].name}, from ${likely.source}.`
+    : 'Nothing on the page says which — pick one.';
+}
+
+// Everything the two projects word differently lives in PROJECTS, so switching
+// is a matter of reading it out rather than of hiding things one at a time.
+function setProject(value) {
+  project = value || null;
+  document.body.dataset.project = project || '';
+
+  $('viewProject').hidden = !!project;
+  $('tabs').hidden = !project;
+  $('projectChip').hidden = !project;
+
+  if (project) {
+    const p = PROJECTS[project];
+    $('projectChip').textContent = p.name;
+    catchBtn.textContent = p.catch;
+    $('toInput').textContent = p.toInput;
+    editor.placeholder = p.placeholder;
+  } else {
+    markLikely();
+  }
+  showTab(activeTabId()); // closes both views while the chooser is up, and saves
+}
+
+for (const card of document.querySelectorAll('.pick-card')) {
+  card.addEventListener('click', () => {
+    const chosen = card.dataset.project;
+    // A Rudder answer goes into a form a person is meant to have filled in by
+    // hand, so it is typed out rather than dropped in whole.
+    if (chosen === 'rudder' && project !== 'rudder') $('entry').value = 'type';
+    setProject(chosen);
+    setStatus('');
+  });
+}
+
+// The chip says which project this tab is on, and takes you back to the choice.
+$('projectChip').addEventListener('click', () => {
+  if (running) return setStatus('Stop the run first.', 'err');
+  setProject(null);
+});
 
 const modeRadios = Array.from(document.querySelectorAll('input[name="mode"]'));
 
@@ -179,6 +276,95 @@ function renderContent(c) {
   return out.join('\n').trim();
 }
 
+/* ---------- the caught Rudder task ----------
+   One block holding everything the task says: what it is waiting on, the
+   conversation, both responses, and every question with its options and
+   whatever has already been answered. It is meant to be copied out whole, so
+   nothing is left to be looked up on the page afterwards. */
+
+const KIND_NAME = {
+  choice: 'pick one',
+  flags: 'tick any that apply',
+  text: 'written answer',
+  value: 'value'
+};
+
+function renderQuestion(f, withGuidelines) {
+  const out = [`[${f.key}]  ${f.label}  (${KIND_NAME[f.kind] || f.kind})`];
+  if (f.question && f.question !== f.label) out.push(`Q: ${f.question}`);
+  // The guidance behind a rating runs to a page or more, so it is included only
+  // when it was asked for.
+  if (withGuidelines && f.guidelines) out.push(f.guidelines);
+
+  if (f.kind === 'choice') {
+    out.push('Options:');
+    for (const o of f.options || []) out.push(`  ${o.value} = ${o.text}`);
+    out.push(f.answer === null || f.answer === undefined
+      ? 'Answer: (not answered)'
+      : `Answer: ${f.answer}${f.answerText ? ` — ${f.answerText}` : ''}`);
+  } else if (f.kind === 'flags') {
+    const on = f.answer || [];
+    out.push('Flags:');
+    for (const o of f.options || []) out.push(`  [${on.includes(o.text) ? 'x' : ' '}] ${o.text}`);
+    if (!on.length) out.push('Answer: (none ticked)');
+  } else if (f.answer === null || f.answer === undefined || f.answer === '') {
+    out.push('Answer: (empty)');
+  } else {
+    out.push(`Answer:\n${f.answer}`);
+  }
+  return out.join('\n');
+}
+
+function noteBody(n) {
+  const asks = (n.asks || []).map((a) => `[${a.answer ? 'x' : ' '}] ${a.question}`).join('\n');
+  return [n.text, asks].filter(Boolean).join('\n\n');
+}
+
+function renderRudder(c, withGuidelines) {
+  const out = [];
+  const part = (title, body) => {
+    if (!body) return;
+    out.push(`${title}\n${'-'.repeat(title.length)}\n${body}\n`);
+  };
+
+  const head = [];
+  if (c.title) head.push(c.title);
+  head.push(c.stage === 'revision'
+    ? 'Stage: revision — this task has been answered or sent back before.'
+    : 'Stage: first pass — nothing has been answered yet.');
+  out.push(head.join('\n') + '\n');
+
+  if (c.taskNotes?.length) {
+    const latest = c.taskNotes.find((n) => n.latest);
+    const rest = c.taskNotes.filter((n) => n !== latest);
+    if (latest) {
+      part(`Latest note — ${latest.title}${latest.time ? ` (${latest.time})` : ''}`,
+        `This is what the task is waiting on.\n\n${noteBody(latest)}`);
+    }
+    if (rest.length) {
+      part(latest ? 'Earlier task notes' : 'Task notes',
+        rest.map((n) => `[${n.title}${n.time ? ` — ${n.time}` : ''}]\n${noteBody(n)}`).join('\n\n'));
+    }
+  }
+
+  for (const doc of c.documents || []) part(doc.title, doc.text);
+
+  for (const sec of c.sections || []) {
+    const bar = '='.repeat(Math.min(60, Math.max(sec.name.length, 12)));
+    out.push(`${bar}\n${sec.name}\n${bar}\n`);
+    if (sec.intro) out.push(sec.intro + '\n');
+    for (const f of sec.fields) out.push(renderQuestion(f, withGuidelines) + '\n');
+  }
+
+  return out.join('\n').trim();
+}
+
+// The answers as the page holds them: the keys it asks for, in the order it
+// asks for them, with whatever is already filled in. Edit and send back.
+function answersJson(answers) {
+  return JSON.stringify({ answers: answers || {} }, null, 2);
+}
+
 // Local time, stamped when the catch happened rather than when it is redrawn,
 // so a restored session still shows when it was taken.
 function stamp(d = new Date()) {
@@ -194,8 +380,14 @@ function showResult(data) {
   // The content opens with the UID and the time it was caught, so a pasted
   // block identifies itself without the UID box beside it.
   const header = `${data.uid || '(no UID)'}_${data.caughtAt || stamp()}`;
-  $('contentValue').textContent = [header, renderContent(data.content || {})]
-    .filter(Boolean).join('\n\n');
+  const body = data.project === 'rudder'
+    ? renderRudder(data.content || {}, $('withGuidelines').checked)
+    : renderContent(data.content || {});
+  $('contentValue').textContent = [header, body].filter(Boolean).join('\n\n');
+
+  const hasAnswers = data.project === 'rudder' && data.answers;
+  $('answersValue').textContent = hasAnswers ? answersJson(data.answers) : '';
+  $('answersPart').hidden = !hasAnswers;
   $('result').hidden = false;
 }
 
@@ -274,7 +466,8 @@ async function copyPart(partEl, text, what) {
 
 for (const [id, get, what] of [
   ['uidPart', () => caught?.uid, 'UID'],
-  ['contentPart', () => $('contentValue').textContent, 'Content']
+  ['contentPart', () => $('contentValue').textContent, 'Content'],
+  ['answersPart', () => $('answersValue').textContent, 'Answers']
 ]) {
   const el = $(id);
   el.addEventListener('click', () => copyPart(el, get(), what));
@@ -286,9 +479,41 @@ for (const [id, get, what] of [
 /* ---------- catch ---------- */
 
 function updateBadge(res) {
+  likely = res.project?.project ? res.project : null;
+
+  if (!project) {
+    $('pageInfo').textContent = likely
+      ? `looks like ${PROJECTS[likely.project].name}`
+      : 'page not recognised';
+    markLikely();
+    return;
+  }
+
+  // Picking the wrong project reads nothing and fills nothing, and an empty
+  // result does not say why - so when the page disagrees with the choice, the
+  // hint under the controls says so rather than leaving it to be worked out.
+  const mismatch = likely?.project && likely.project !== project
+    ? `This page looks like a ${PROJECTS[likely.project].name} task — `
+      + 'change the project with the chip above.'
+    : null;
+
+  if (project === 'rudder') {
+    $('pageInfo').textContent = res.rudderFields
+      ? `${res.rudderFields} question${res.rudderFields === 1 ? '' : 's'}`
+      : 'no rating form found';
+    $('stageHint').textContent = mismatch
+      || 'The task, its notes and any answers already on it.';
+    return;
+  }
+
   $('pageInfo').textContent = res.hasContainer
     ? `${res.count} section${res.count === 1 ? '' : 's'}`
     : 'no criteria found';
+
+  if (mismatch && !modeTouched) {
+    $('modeHint').textContent = mismatch;
+    return;
+  }
 
   const found = res.detected?.mode;
   if (found && !modeTouched) {
@@ -342,7 +567,7 @@ catchBtn.addEventListener('click', async () => {
   try {
     const { data, meta } = await send({
       type: 'EXTRACT',
-      options: { mode: selectedMode(), runChecks: $('runChecks').checked }
+      options: { project, mode: selectedMode(), runChecks: $('runChecks').checked }
     }, ranOn);
     data.caughtAt = stamp();
 
@@ -352,6 +577,23 @@ catchBtn.addEventListener('click', async () => {
     } else {
       // File it under the tab it came from, so it is waiting there on return.
       await saveCaughtFor(ranOn, data);
+    }
+
+    if (data.project === 'rudder') {
+      const bits = [`${meta.fields} question${meta.fields === 1 ? '' : 's'}`];
+      if (meta.documents) bits.push(`${meta.documents} document${meta.documents === 1 ? '' : 's'}`);
+      if (meta.notes) bits.push(`${meta.notes} task note${meta.notes === 1 ? '' : 's'}`);
+      let msg = `Caught ${bits.join(', ')}.`;
+      // First time round there is nothing to carry over; on a revision the
+      // answers already on the page are what the next one is edited from.
+      msg += meta.answered
+        ? `\n${meta.answered} of ${meta.fields} already answered — those are in the Answers box.`
+        : '\nNothing answered yet, so the Answers box is a blank template.';
+      if (mine()) {
+        setStatus(msg, 'ok');
+        refresh();
+      }
+      return;
     }
 
     const c = data.content || {};
@@ -414,7 +656,7 @@ function applyRunState(res) {
   const p = res.progress;
   if (res.busy) {
     if (!running) setRunning(true);
-    showBusy(true, p ? `${p.phase} criterion ${p.index} of ${p.total}…` : 'Working…');
+    showBusy(true, p ? `${p.phase} ${p.unit || 'criterion'} ${p.index} of ${p.total}…` : 'Working…');
     if (p) setStatus(`${p.phase} ${p.index}/${p.total}…`);
   } else {
     if (running) setRunning(false);
@@ -461,6 +703,7 @@ applyBtn.addEventListener('click', async () => {
       type: 'APPLY',
       data: parsed,
       options: {
+        project,
         speed,
         entry: $('entry').value,
         gap: Number($('gap').value),
@@ -468,21 +711,43 @@ applyBtn.addEventListener('click', async () => {
       }
     });
 
-    const verb = $('entry').value === 'type' ? 'Typed' : 'Pasted';
-    let msg = `${verb} ${result.filled} of ${result.requested} criteria`;
-    msg += result.added ? ` (added ${result.added} new section${result.added === 1 ? '' : 's'}).` : '.';
-    if (result.ranInBackground) {
-      msg += '\nPart of this ran while the tab was behind, which Chrome slows down.';
-    }
-    if (result.extrasLeft) {
-      msg += `\n${result.extrasLeft} extra section${result.extrasLeft === 1 ? '' : 's'} `
-        + 'could not be deleted — the page did not remove them.';
-    }
-    if (result.skippedFields.length) msg += `\nNo field for: ${result.skippedFields.join(', ')}`;
-    if (result.truncated.length) msg += `\nCut to the field limit: ${result.truncated.join(', ')}`;
+    let msg;
+    let clean;
 
-    const clean = result.filled === result.requested
-      && !result.skippedFields.length && !result.truncated.length;
+    if (result.project === 'rudder') {
+      msg = `Answered ${result.filled} of ${result.requested} question`
+        + `${result.requested === 1 ? '' : 's'}.`;
+      if (result.ranInBackground) {
+        msg += '\nPart of this ran while the tab was behind, which Chrome slows down.';
+      }
+      // A key the page does not ask for is worth saying out loud: it usually
+      // means the answer was written against a different task.
+      if (result.skippedFields.length) {
+        msg += `\nNot on this page: ${result.skippedFields.join(', ')}`;
+      }
+      if (result.refused.length) msg += `\nWould not take: ${result.refused.join('\n')}`;
+      if (result.unknownFlags.length) msg += `\nNo such flag — ${result.unknownFlags.join('\n')}`;
+      if (result.truncated.length) msg += `\nCut to the field limit: ${result.truncated.join(', ')}`;
+
+      clean = result.filled === result.requested && !result.skippedFields.length
+        && !result.refused.length && !result.unknownFlags.length && !result.truncated.length;
+    } else {
+      const verb = $('entry').value === 'type' ? 'Typed' : 'Pasted';
+      msg = `${verb} ${result.filled} of ${result.requested} criteria`;
+      msg += result.added ? ` (added ${result.added} new section${result.added === 1 ? '' : 's'}).` : '.';
+      if (result.ranInBackground) {
+        msg += '\nPart of this ran while the tab was behind, which Chrome slows down.';
+      }
+      if (result.extrasLeft) {
+        msg += `\n${result.extrasLeft} extra section${result.extrasLeft === 1 ? '' : 's'} `
+          + 'could not be deleted — the page did not remove them.';
+      }
+      if (result.skippedFields.length) msg += `\nNo field for: ${result.skippedFields.join(', ')}`;
+      if (result.truncated.length) msg += `\nCut to the field limit: ${result.truncated.join(', ')}`;
+
+      clean = result.filled === result.requested
+        && !result.skippedFields.length && !result.truncated.length;
+    }
     if (sessionTabId === ranOn) setStatus(msg, clean ? 'ok' : '');
   } catch (e) {
     if (sessionTabId === ranOn) setStatus(e.message, e.message === 'Stopped.' ? '' : 'err');
@@ -521,12 +786,16 @@ $('download').addEventListener('click', () => {
 
 $('toInput').addEventListener('click', () => {
   if (!caught) return setStatus('Catch something first.', 'err');
-  // Written in the numbered shape the input box shows as its template.
-  const rows = caught.criteria.map((c, i) => ({ [i + 1]: c.criterion, weight: c.weight }));
-  editor.value = JSON.stringify({ criteria: rows }, null, 2);
+  if (caught.project === 'rudder') {
+    editor.value = answersJson(caught.answers);
+  } else {
+    // Written in the numbered shape the input box shows as its template.
+    const rows = caught.criteria.map((c, i) => ({ [i + 1]: c.criterion, weight: c.weight }));
+    editor.value = JSON.stringify({ criteria: rows }, null, 2);
+  }
   save();
   showTab('tabInput');
-  setStatus('Criteria copied into the input box.', 'ok');
+  setStatus(PROJECTS[project]?.copied || 'Copied into the input box.', 'ok');
 });
 
 $('busyStop').addEventListener('click', () => applyBtn.click());
@@ -575,6 +844,8 @@ function save() {
       entry: $('entry').value,
       gap: $('gap').value,
       runChecks: $('runChecks').checked,
+      withGuidelines: $('withGuidelines').checked,
+      project,
       tab: activeTabId(),
       removeExtras: $('removeExtras').checked,
       mode: selectedMode(),
@@ -604,9 +875,13 @@ async function loadSession(tabId) {
   $('entry').value = s.entry || 'paste';
   $('gap').value = s.gap || '2000';
   $('runChecks').checked = s.runChecks !== false;
+  $('withGuidelines').checked = !!s.withGuidelines;
   $('removeExtras').checked = s.removeExtras !== false;
   setMode(s.mode || null);
   $('modeHint').textContent = '';
+  // Before the result is drawn: which project it is decides how it is read.
+  likely = null;
+  setProject(s.project || null);
 
   if (s.caught) {
     showResult(s.caught);
@@ -631,6 +906,11 @@ editor.addEventListener('input', save);
 $('speed').addEventListener('change', save);
 $('gap').addEventListener('change', save);
 $('runChecks').addEventListener('change', save);
+// The guidelines are part of the caught block, so turning them on redraws it.
+$('withGuidelines').addEventListener('change', () => {
+  save();
+  if (caught) showResult(caught);
+});
 $('entry').addEventListener('change', () => { save(); if (!running) setRunning(false); });
 $('removeExtras').addEventListener('change', save);
 
