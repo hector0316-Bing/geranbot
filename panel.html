@@ -10,7 +10,11 @@
     <header>
       <h1>Criteria Catcher</h1>
       <button id="projectChip" class="chip" type="button" hidden
-              title="Change the project">Geranium</button>
+              aria-label="Back to the project choice" title="Back to the project choice">
+        <svg class="chip-back" width="11" height="11" viewBox="0 0 256 256"
+             fill="currentColor" aria-hidden="true"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"></path></svg>
+        <span id="projectName">Geranium</span>
+      </button>
       <span id="pageInfo" class="badge">checking…</span>
     </header>
 
@@ -66,6 +70,11 @@
         Include the rating guidelines in full
       </label>
     </div>
+
+    <p id="mismatch" class="hint mismatch" hidden>
+      <span id="mismatchText"></span>
+      <button id="switchProject" class="link" type="button"></button>
+    </p>
 
     <button id="catch" class="primary">Catch criteria</button>
     </div>

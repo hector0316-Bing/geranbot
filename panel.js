@@ -115,10 +115,11 @@ function setProject(value) {
   $('viewProject').hidden = !!project;
   $('tabs').hidden = !project;
   $('projectChip').hidden = !project;
+  $('mismatch').hidden = true; // re-decided on the next reading of the page
 
   if (project) {
     const p = PROJECTS[project];
-    $('projectChip').textContent = p.name;
+    $('projectName').textContent = p.name;
     catchBtn.textContent = p.catch;
     $('toInput').textContent = p.toInput;
     editor.placeholder = p.placeholder;
@@ -128,21 +129,38 @@ function setProject(value) {
   showTab(activeTabId()); // closes both views while the chooser is up, and saves
 }
 
+function pickProject(chosen) {
+  // A Rudder answer goes into a form a person is meant to have filled in by
+  // hand, so it is typed out rather than dropped in whole.
+  if (chosen === 'rudder' && project !== 'rudder') $('entry').value = 'type';
+  setProject(chosen);
+  refresh(); // the badge and the hints belong to the new project, not the old
+}
+
 for (const card of document.querySelectorAll('.pick-card')) {
   card.addEventListener('click', () => {
-    const chosen = card.dataset.project;
-    // A Rudder answer goes into a form a person is meant to have filled in by
-    // hand, so it is typed out rather than dropped in whole.
-    if (chosen === 'rudder' && project !== 'rudder') $('entry').value = 'type';
-    setProject(chosen);
+    pickProject(card.dataset.project);
     setStatus('');
   });
 }
 
-// The chip says which project this tab is on, and takes you back to the choice.
+// The chip is the way back. It carries a caret pointing the way it goes, so it
+// reads as a control rather than as a label saying which project this is.
 $('projectChip').addEventListener('click', () => {
   if (running) return setStatus('Stop the run first.', 'err');
   setProject(null);
+  setStatus('');
+  refresh(); // the badge belonged to the project just left
+});
+
+// Picking the wrong project is easy and ordinary, so correcting it is one press
+// rather than a trip back through the chooser.
+$('switchProject').addEventListener('click', () => {
+  const to = $('switchProject').dataset.project;
+  if (!to) return;
+  if (running) return setStatus('Stop the run first.', 'err');
+  pickProject(to);
+  setStatus(`Switched to ${PROJECTS[to].name}.`, 'ok');
 });
 
 const modeRadios = Array.from(document.querySelectorAll('input[name="mode"]'));
@@ -490,30 +508,27 @@ function updateBadge(res) {
   }
 
   // Picking the wrong project reads nothing and fills nothing, and an empty
-  // result does not say why - so when the page disagrees with the choice, the
-  // hint under the controls says so rather than leaving it to be worked out.
-  const mismatch = likely?.project && likely.project !== project
-    ? `This page looks like a ${PROJECTS[likely.project].name} task — `
-      + 'change the project with the chip above.'
-    : null;
+  // result never says why. So when the page disagrees with the choice, say so
+  // on a line of its own, with the switch to press on it.
+  const other = likely?.project && likely.project !== project ? likely.project : null;
+  $('mismatch').hidden = !other;
+  if (other) {
+    $('mismatchText').textContent = `This page looks like a ${PROJECTS[other].name} task.`;
+    $('switchProject').textContent = `Switch to ${PROJECTS[other].name}`;
+    $('switchProject').dataset.project = other;
+  }
 
   if (project === 'rudder') {
     $('pageInfo').textContent = res.rudderFields
       ? `${res.rudderFields} question${res.rudderFields === 1 ? '' : 's'}`
       : 'no rating form found';
-    $('stageHint').textContent = mismatch
-      || 'The task, its notes and any answers already on it.';
+    $('stageHint').textContent = 'The task, its notes and any answers already on it.';
     return;
   }
 
   $('pageInfo').textContent = res.hasContainer
     ? `${res.count} section${res.count === 1 ? '' : 's'}`
     : 'no criteria found';
-
-  if (mismatch && !modeTouched) {
-    $('modeHint').textContent = mismatch;
-    return;
-  }
 
   const found = res.detected?.mode;
   if (found && !modeTouched) {

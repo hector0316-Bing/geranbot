@@ -37,9 +37,16 @@ It stays a choice because the two readers have nothing in common: the wrong one
 on a page reads nothing and fills nothing, and it is better to be asked than to
 find that out from an empty result.
 
-The chip beside the title says which project the tab is on, and clicking it goes
-back to the chooser. Everything the two word differently — the Catch button, the
-input template, the options each offers — changes with it.
+The chip beside the title says which project the tab is on, and it is the way
+back: it carries a caret pointing the way it goes, and pressing it returns to the
+chooser. Everything the two word differently — the Catch button, the input
+template, the options each offers — changes with the choice.
+
+Picking the wrong one is ordinary and easy, so it does not have to be noticed
+first. Whenever the page disagrees with the choice, a line under the controls
+says so — *This page looks like a Rudder task.* — with **Switch to Rudder**
+beside it, and one press moves the tab over without a trip back through the
+chooser. Neither route is available mid-run; stop it first.
 
 ## One session per tab
 
