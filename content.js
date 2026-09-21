@@ -312,20 +312,92 @@
     return new Date(year, Number(m[1]) - 1, Number(m[2]), hour, Number(m[5])).getTime();
   }
 
-  // The newest note says what the task is waiting on. An automated run only
-  // carries a timestamp when it has something to report - a passing one is the
-  // standing "All checks have passed" - so the newest timestamped note is the
-  // automated run exactly when the auto-evaluation did not pass, and the
-  // reviewer's note when it did.
-  function markLatest(notes) {
+  // The one note of a set to read: newest by timestamp, or the first of them
+  // when none carries a timestamp at all.
+  function newestOf(notes) {
     let best = null;
-    let bestWhen = 0;
+    let bestWhen = -1;
     for (const n of notes) {
       const when = noteWhen(n.time);
       if (when > bestWhen) { bestWhen = when; best = n; }
     }
+    return best;
+  }
+
+  // The newest note on the page. Only a timestamped note can be the newest one:
+  // Refinement carries some of its feedback as headed blocks with no time
+  // against them, so a page can have no newest note at all.
+  function markLatest(notes) {
+    const best = newestOf(notes.filter((n) => noteWhen(n.time)));
     if (best) best.latest = true;
     return best;
+  }
+
+  // "Automated feedback" on Submission and Review, "AutoEval Feedback" on
+  // Refinement: one machine run under two names.
+  const AUTO_NOTE = /automated|auto-?\s*eval/i;
+
+  // An automated run says which kind of run it was in its own words - a clean
+  // one is the standing "All checks have passed", a dirty one names what
+  // failed. Its timestamp does not say, because a passing run can carry one
+  // too, so the verdict is read from the message and never from the clock.
+  function autoVerdict(text) {
+    const t = text || '';
+    if (/\bfail(ed|ing|ure|s)?\b|\bdid not pass\b|\bnot passed\b/i.test(t)) return 'failed';
+    if (/\bpass(ed|es|ing)?\b/i.test(t)) return 'passed';
+    return null;
+  }
+
+  // Which feedback the task is waiting on, and so what the reader should be on.
+  //
+  //   newest note is the automated run and it reports a failure
+  //     -> the auto-checking is what is blocking. The answer is in the
+  //        auto-evaluation results below the golden solution upload, not in
+  //        anybody's wording, so those are what the block leads with.
+  //   newest note is the reviewer's, or is an automated run that all passed
+  //     -> the auto-checking is satisfied and what is left is the quality of
+  //        the content, so the reviewer's feedback is what the block leads with.
+  function decideFocus(notes) {
+    const latest = markLatest(notes);
+    const autos = notes.filter((n) => AUTO_NOTE.test(n.title));
+    const human = notes.filter((n) => !AUTO_NOTE.test(n.title));
+
+    // The automated run only gets to decide when it is the newest note. On a
+    // page whose notes carry no timestamps at all there is no newest note, so
+    // the automated run is read on its own verdict instead.
+    const auto = latest ? (AUTO_NOTE.test(latest.title) ? latest : null) : newestOf(autos);
+    const verdict = auto ? autoVerdict(auto.text) : null;
+
+    const newestAuto = newestOf(autos);
+    const overall = newestAuto ? autoVerdict(newestAuto.text) : null;
+    const autoEvalPassed = overall === null ? null : overall === 'passed';
+
+    let focus = null;
+    if (auto && verdict !== 'passed') {
+      // An unreadable automated run is treated as a failing one: it is the
+      // newest word on the task and it is not the standing all-clear.
+      focus = {
+        on: 'auto-evaluation',
+        note: auto,
+        why: verdict === 'failed'
+          ? 'The newest note is the automated run and it reports a failure, so the auto-checking is what this task is waiting on. The answer is in the auto-evaluation results below the golden solution upload, not in the wording.'
+          : 'The newest note is the automated run and it does not say the checks passed, so read it as the auto-checking still blocking. Start from the auto-evaluation results below the golden solution upload.'
+      };
+    } else {
+      const lead = latest && !AUTO_NOTE.test(latest.title) ? latest : newestOf(human) || latest;
+      if (lead) {
+        focus = {
+          on: 'reviewer feedback',
+          note: lead,
+          why: auto
+            ? 'The automated run says all checks passed, so the auto-checking is not what is blocking. What is left is the quality of the content, and this feedback is what to work from.'
+            : 'The newest note is a person\'s, not the machine\'s, so the auto-checking is behind it. What is left is the quality of the content, and this feedback is what to work from.'
+        };
+      }
+    }
+
+    if (focus) focus.note.focus = true;
+    return { latest, focus, autoEvalPassed };
   }
 
   async function readNotes() {
@@ -416,14 +488,24 @@
      feedback results" and a pass/fail panel appears beside it. Both of those
      say the check has finished. */
 
+  const CHECK_BUTTON = /^check\s+feedback\b/i;
+
+  // A check field is one carrying a "Check feedback" button. Most say so in
+  // their testid; the button itself is the authority where the testid does not,
+  // so a renamed wrapper cannot hide a check from the sweep.
   function checkFields() {
-    return Array.from(document.querySelectorAll('[data-testid^="field-"]'))
-      .filter((f) => /feedbackbutton/i.test(f.getAttribute('data-testid') || ''));
+    const out = [];
+    for (const f of document.querySelectorAll('[data-testid^="field-"]')) {
+      const byId = /feedbackbutton/i.test(f.getAttribute('data-testid') || '');
+      const byButton = Array.from(f.querySelectorAll('button')).some((b) => CHECK_BUTTON.test(buttonText(b)));
+      if (byId || byButton) out.push(f);
+    }
+    return out;
   }
 
   function checkRunButton(field) {
     return Array.from(field.querySelectorAll('button'))
-      .find((b) => !b.disabled && /^check feedback$/i.test(buttonText(b))) || null;
+      .find((b) => !b.disabled && CHECK_BUTTON.test(buttonText(b))) || null;
   }
 
   function checkFinished(field) {
@@ -432,11 +514,17 @@
       .some((b) => /clear feedback/i.test(buttonText(b)));
   }
 
-  function promptText() {
-    const el = document.querySelector('[data-testid="field-prompt"] textarea')
+  // The editable User Prompt box. Refinement has none - it shows the prompt it
+  // is revising as read-only text - so its absence is not an empty prompt.
+  function promptBox() {
+    return document.querySelector('[data-testid="field-prompt"] textarea')
       || Array.from(document.querySelectorAll('[data-testid^="field-"]'))
-        .find((f) => /^user prompt$/i.test(fieldLabel(f)))?.querySelector('textarea');
-    return (el?.value || '').trim();
+        .find((f) => /^user prompt$/i.test(fieldLabel(f)))?.querySelector('textarea')
+      || null;
+  }
+
+  function promptText() {
+    return (promptBox()?.value || '').trim();
   }
 
   // Press every check that has not run, then wait for all of them to answer.
@@ -444,10 +532,13 @@
   async function runFeedbackChecks({ timeout = 180000 } = {}) {
     const pending = [];
 
+    const clicked = new Set();
     for (const field of checkFields()) {
       if (checkFinished(field)) continue;
       const btn = checkRunButton(field);
-      if (!btn) continue;
+      // A field nested in another finds the same button twice; press it once.
+      if (!btn || clicked.has(btn)) continue;
+      clicked.add(btn);
       btn.scrollIntoView({ block: 'center' });
       btn.click();
       pending.push({ field, label: fieldLabel(field) });
@@ -564,19 +655,23 @@
     { match: /input files.*multi-modal/ },
     { match: /^is web search required for your task/ },
     { match: /^if you were to complete this prompt manually/ },
-    { match: /^auto-evaluation golden solution submission feedback$/ },
-    { match: /^auto-evaluation difficulty submission feedback$/ },
-    { match: /^auto-evaluation input output check submission feedback$/ },
-    { match: /^auto-evaluation check: prompt and input files self-contained/ },
-    { match: /^verifier$/ },
-    { match: /^audit$/ },
-    { match: /^audit: rubric and golden solution alignment$/ },
-    { match: /^safety check$/ },
-    { match: /^auto-evaluation llm generated files check/ },
-    { match: /^auto-evaluation rubric quality check submission feedback$/ },
-    { match: /^golden solution leakage check$/ },
-    { match: /^rubric golden alignment check$/ },
-    { match: /^rubric value grounding check$/ }
+    // Everything from here down is an auto-evaluation result, the run of
+    // boxes that sits below the golden solution upload. When the auto-checking
+    // is what a task is waiting on, these are the answer, so they are flagged
+    // to be led with rather than left at the foot of the block.
+    { auto: true, match: /^auto-evaluation golden solution submission feedback$/ },
+    { auto: true, match: /^auto-evaluation difficulty submission feedback$/ },
+    { auto: true, match: /^auto-evaluation input output check submission feedback$/ },
+    { auto: true, match: /^auto-evaluation check: prompt and input files self-contained/ },
+    { auto: true, match: /^verifier$/ },
+    { auto: true, match: /^audit$/ },
+    { auto: true, match: /^audit: rubric and golden solution alignment$/ },
+    { auto: true, match: /^safety check$/ },
+    { auto: true, match: /^auto-evaluation llm generated files check/ },
+    { auto: true, match: /^auto-evaluation rubric quality check submission feedback$/ },
+    { auto: true, match: /^golden solution leakage check$/ },
+    { auto: true, match: /^rubric golden alignment check$/ },
+    { auto: true, match: /^rubric value grounding check$/ }
   ];
 
   function readFields() {
@@ -597,7 +692,7 @@
         // The code widget's empty state, not a result.
         if (typeof value === 'string' && /^no code provided$/i.test(value.trim())) continue;
         if (want.key) named[want.key] = value;
-        else list.push({ label: f.label, value });
+        else list.push(want.auto ? { label: f.label, value, auto: true } : { label: f.label, value });
       }
     }
     return { named, list };
@@ -1537,17 +1632,36 @@
     const boardFilled = criteria.some((c) => String(c.criterion || '').trim());
 
     // A refinement page with nothing in its criteria list is a task nobody has
-    // written yet. There is nothing for the checks to judge, and running them
-    // would only ask the server about work that does not exist.
+    // written yet, so its criteria are read from the Provided Rubrics document
+    // further down rather than from the empty list.
     const notStartedYet = mode === 'refinement' && !boardFilled;
 
-    // Otherwise a filled prompt means the checks have something to judge, so run
-    // them and wait; the failures are picked up by the sweep below.
+    // Whether to press the checks is the page's answer, not a guess from the
+    // form: a check with an enabled "Check feedback" button has not been asked
+    // yet, and asking it is the whole point of the catch.
+    //
+    // It used to be guessed, and both guesses were wrong on a Refinement page
+    // exactly when it mattered - on the first catch. Its criteria list opens
+    // empty, which read as "nothing to judge", and its prompt is read-only, so
+    // the empty-prompt gate fired as well. Between them nothing was ever
+    // pressed on a refinement task, which is the one page that arrives with its
+    // checks unrun.
     let checks = null;
     let checksSkipped = null;
+    const fields = checkFields();
+    const unanswered = fields.filter((f) => !checkFinished(f));
+    const runnable = unanswered.filter((f) => checkRunButton(f));
+    const box = promptBox();
     if (options.runChecks === false) checksSkipped = 'turned off';
-    else if (notStartedYet) checksSkipped = 'refinement task not written yet';
-    else if (!promptText()) checksSkipped = 'no prompt yet';
+    else if (!fields.length) checksSkipped = 'no checks on this page';
+    else if (!unanswered.length) checksSkipped = 'already answered';
+    // A check still waiting to be asked, behind a button the page has disabled,
+    // is not the same as one that has answered - and saying nothing about it is
+    // how a catch that pressed nothing passes for a catch that had nothing to
+    // press.
+    else if (!runnable.length) checksSkipped = 'the buttons are disabled';
+    // Only where the page has a prompt box of its own to be empty.
+    else if (box && !promptText()) checksSkipped = 'no prompt yet';
     else checks = await runFeedbackChecks();
 
     // A verdict that lands while the checks are answering can mount inside a
@@ -1588,13 +1702,9 @@
       if (text && !notes.some((n) => n.title === title)) notes.push({ title, text });
     }
 
-    // Which note is newest decides what the reader should be looking at, so work
-    // it out here, once the headed blocks have joined the accordions.
-    const latestNote = markLatest(notes);
-    const automated = notes.find((n) => /automated/i.test(n.title));
-    const autoEvalPassed = automated
-      ? !/\bfail(ed|ure|s)?\b/i.test(automated.text)
-      : null;
+    // What the task is waiting on decides what the reader should be looking at,
+    // so work it out here, once the headed blocks have joined the accordions.
+    const { latest: latestNote, focus, autoEvalPassed } = decideFocus(notes);
 
     if (!criteria.length && !uid && !notes.length && !sector && !list.length) {
       throw new Error('Nothing found on this page - no criteria, UID, sector or task notes.');
@@ -1604,6 +1714,13 @@
     if (notes.length) content.taskNotes = notes;
     if (latestNote) {
       content.latestNote = { title: latestNote.title, time: latestNote.time || null };
+    }
+    if (focus) {
+      content.focus = {
+        on: focus.on,
+        why: focus.why,
+        note: { title: focus.note.title, time: focus.note.time || null }
+      };
     }
     if (autoEvalPassed !== null) content.autoEvalPassed = autoEvalPassed;
     if (sector) content.sector = sector;

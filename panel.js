@@ -241,23 +241,36 @@ function renderContent(c) {
     block('Checks still waiting when this was caught', c.pendingChecks.join('\n'));
   }
 
-  // The newest note says what the task is actually waiting on. It used to take
-  // its turn in a list, where it read as just another note - and when the
-  // auto-evaluation had failed it was not there at all.
-  if (c.taskNotes?.length) {
-    const latest = c.taskNotes.find((n) => n.latest);
-    const rest = c.taskNotes.filter((n) => n !== latest);
+  // The auto-evaluation boxes below the golden solution upload. Grouped under
+  // one heading either way; only where they sit moves, because when the
+  // auto-checking is what is blocking they are the thing to read, and when it
+  // is not they are the last thing worth the scroll.
+  const autoFields = (c.fields || []).filter((f) => f.auto);
+  const otherFields = (c.fields || []).filter((f) => !f.auto);
+  const autoBlock = () => block('Auto-evaluation feedback (below the golden solution upload)',
+    autoFields.map((f) => `[${f.label}]\n${String(f.value)}`).join('\n\n'));
 
-    if (latest) {
-      const meaning = /automated/i.test(latest.title)
-        ? 'The auto-evaluation did not pass - its failures are what this task is waiting on.'
-        : 'The auto-evaluation passed - this note is what this task is waiting on.';
-      block(`Latest note - ${latest.title}${latest.time ? ` (${latest.time})` : ''}`,
-        `${meaning}\n\n${latest.text}`);
+  // One note says what this task is waiting on, and which one it is decides
+  // what the rest of the block is for. A failing automated run means the
+  // auto-checking is blocking, so its results lead; a reviewer's note - or an
+  // automated run that all passed - means the content itself is what is left.
+  const onAuto = c.focus?.on === 'auto-evaluation';
+  if (c.taskNotes?.length) {
+    const lead = c.taskNotes.find((n) => n.focus) || c.taskNotes.find((n) => n.latest);
+    const rest = c.taskNotes.filter((n) => n !== lead);
+
+    if (lead) {
+      const heading = onAuto ? 'Focus - the auto-checking' : "Focus - the reviewer's feedback";
+      block(`${heading}: ${lead.title}${lead.time ? ` (${lead.time})` : ''}`,
+        [c.focus?.why, lead.text].filter(Boolean).join('\n\n'));
     }
 
+    // Straight after the note that sent the reader here, ahead of the older
+    // notes: on a task the machine is blocking, this is the whole answer.
+    if (onAuto && autoFields.length) autoBlock();
+
     if (rest.length) {
-      block(latest ? 'Earlier task notes' : 'Task notes',
+      block(lead ? 'Other task notes' : 'Task notes',
         rest.map((n) => `[${n.title}${n.time ? ` - ${n.time}` : ''}]\n${n.text}`).join('\n\n'));
     }
   }
@@ -284,12 +297,14 @@ function renderContent(c) {
   }
   if (onet.length) block('O*NET', onet.join('\n'));
 
-  for (const f of c.fields || []) {
+  for (const f of otherFields) {
     const v = String(f.value);
     // Keep one-liners on the label line; give longer answers their own block.
     if (v.length <= 60 && !v.includes('\n')) out.push(`${f.label}: ${v}\n`);
     else block(f.label, v);
   }
+
+  if (!onAuto && autoFields.length) autoBlock();
 
   return out.join('\n').trim();
 }
@@ -620,10 +635,23 @@ catchBtn.addEventListener('click', async () => {
     if (c.errors) extras.push(`${c.errors.length} failed check${c.errors.length === 1 ? '' : 's'}`);
 
     const fromRubric = meta?.criteriaSource === 'provided rubrics';
-    if (meta?.checksSkipped === 'refinement task not written yet') {
-      extras.push('checks skipped, the task is not written yet');
-    }
+    // Why nothing was pressed, when nothing was. Checks that had already
+    // answered say nothing: that is the ordinary case on a re-catch.
+    const SKIPPED = {
+      'turned off': 'checks not run, the toggle is off',
+      'no prompt yet': 'checks skipped, there is no prompt yet',
+      'the buttons are disabled': 'checks not run, the page has their buttons disabled',
+      'no checks on this page': 'no checks on this page'
+    };
+    if (SKIPPED[meta?.checksSkipped]) extras.push(SKIPPED[meta.checksSkipped]);
     let msg = `Caught ${data.criteria.length} criteria${extras.length ? `, plus ${extras.join(', ')}` : ''}.`;
+    // Which of the two a task is stuck on is the first thing worth knowing, so
+    // say it here rather than leaving it to be read out of the block.
+    if (c.focus) {
+      msg += c.focus.on === 'auto-evaluation'
+        ? '\nWaiting on the auto-checking - start from the auto-evaluation results below the golden solution upload.'
+        : '\nThe auto-checking is satisfied - waiting on the content, so start from the feedback.';
+    }
     if (fromRubric) msg += '\nThe criteria list was empty, so these came from Provided Rubrics.';
     // Only meaningful when the criteria came off the form itself.
     const short = fromRubric ? 0 : (meta?.sections ?? data.criteria.length) - data.criteria.length;

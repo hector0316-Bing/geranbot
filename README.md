@@ -233,19 +233,22 @@ in its corner; the box flashes green when the clipboard has it.
      "Occupation", and are labelled that way here so a caught block reads the
      same whichever page it came off
   2. Checks still waiting, if the page was read before every check had answered
-  3. Task notes — Reviewer Feedback, Reviewer Note, Rebuttal Note, Automated
-     feedback, each with its timestamp
-  4. Failed checks — any check panel the page paints red
-  5. Prompt
-  6. Criteria — number, text and weight only, never the weight guidance text
-  7. O*NET Occupation, Tasks and Skills (Submission and Review only)
-  8. The four task questions — input file count, multi-modal, web search, manual
-     duration
-  9. Every auto-evaluation result — Golden Solution, Difficulty, input/output
-     check, Self-Contained check, Verifier, Audit, Audit: Rubric and Golden
-     Solution Alignment, Safety Check, LLM generated files check, Rubric Quality
-     Check, Golden solution leakage, Rubric golden alignment, Rubric value
-     grounding
+  3. Focus — the one note the task is waiting on, under a heading that says
+     which kind of problem that makes it
+  4. The auto-evaluation results, but only when they are the focus
+  5. Other task notes — Reviewer Feedback, Reviewer Note, Rebuttal Note,
+     Automated feedback, each with its timestamp
+  6. Failed checks — any check panel the page paints red
+  7. Prompt
+  8. Criteria — number, text and weight only, never the weight guidance text
+  9. O*NET Occupation, Tasks and Skills (Submission and Review only)
+  10. The four task questions — input file count, multi-modal, web search,
+      manual duration
+  11. The auto-evaluation results, when they were not the focus — Golden
+      Solution, Difficulty, input/output check, Self-Contained check, Verifier,
+      Audit, Audit: Rubric and Golden Solution Alignment, Safety Check, LLM
+      generated files check, Rubric Quality Check, Golden solution leakage,
+      Rubric golden alignment, Rubric value grounding
 
 Only results are taken, never the form's own instructions: the description under
 each label ("This box will only populate once the auto-evaluations finish…",
@@ -253,26 +256,44 @@ each label ("This box will only populate once the auto-evaluations finish…",
 is left out rather than printed empty, and an auto-eval box still showing its
 "No code provided" placeholder counts as absent.
 
-### Which note the task is waiting on
+### Which feedback the task is waiting on
 
-The newest note says what state a task is actually in, so the caught block leads
-with it under **Latest note** and the rest follow as **Earlier task notes**.
+A task is blocked on one of two different things, and which one decides what
+there is to do about it:
 
-An automated run only carries a timestamp when it has something to report — a
-passing one is the standing "All checks have passed" with no time against it. So
-the newest timestamped note is the automated run exactly when the
-auto-evaluation did not pass, and the reviewer's note when it did, and the block
-says which:
+- **the auto-checking**, when the machine will not pass the task — nothing in
+  the wording will move it, the answer is in the auto-evaluation boxes;
+- **the quality of the content**, when the machine is satisfied and a person
+  has asked for something better.
 
-- *Latest note — Automated feedback (9/2/26, 5:54 PM)* → the auto-evaluation did
-  not pass, and its failures are what the task is waiting on.
-- *Latest note — Reviewer Feedback (9/2/26, 4:15 AM)* → the auto-evaluation
-  passed, and the reviewer's note is what the task is waiting on.
+So the caught block does not merely lead with the newest note; it names which
+of the two this is, under **Focus**, and orders what follows to match. The
+newest note decides, and the automated run's own **message** decides what that
+means — not its timestamp, because a passing run can carry one too:
 
-Newest is decided on the timestamp, not on the kind of note, so a reviewer's
-reply after a failed run still leads. A failing automated run **is kept**: it
-used to be discarded as noise, which threw away the one note that mattered
-precisely when it mattered.
+| Newest note | Its message | Focus | What leads the block |
+|---|---|---|---|
+| Automated feedback | names a failure | the auto-checking | the automated note, then **Auto-evaluation feedback (below the golden solution upload)** — every auto-eval box, pulled up from the foot of the block |
+| Automated feedback | all checks passed | the reviewer's feedback | the newest reviewer note, with the auto-eval boxes left at the foot |
+| Reviewer Feedback / Note / Rebuttal | — | the reviewer's feedback | that note |
+
+An automated run that is newest but says neither — "AutoEval execution error"
+and the like — is read as blocking, not as passing: it is the newest word on the
+task and it is not the standing all-clear.
+
+Newest is decided on the timestamp, so a reviewer's reply after a failed run
+still leads and still points at the content. **Refinement's feedback is headed
+blocks rather than accordions and carries no timestamps at all**; when nothing
+on the page is timestamped there is no newest note, so the automated run is read
+on its own verdict — a failing "AutoEval Feedback" block makes the
+auto-checking the focus, a passing one hands it to the correction feedback.
+
+A failing automated run **is kept**: it used to be discarded as noise, which
+threw away the one note that mattered precisely when it mattered.
+
+The status line says the same thing in one line as the catch lands — *"Waiting
+on the auto-checking — start from the auto-evaluation results below the golden
+solution upload."*
 
 ## Running the checks
 
@@ -281,11 +302,16 @@ Rubric Quality, Name Check and the rest — sits behind a **Check feedback**
 button, and its verdict only exists once that button has been pressed and the
 server has answered.
 
-When the prompt is filled, a catch presses every check that has not run yet,
-waits for all of them to answer, and only then reads the page. A check is
-finished when its result panel appears or its button turns into "Clear feedback
-results". Checks that have already answered are left alone, so re-catching does
-not re-run them.
+A catch presses every check that has not run yet, waits for all of them to
+answer, and only then reads the page. A check is finished when its result panel
+appears or its button turns into "Clear feedback results". Checks that have
+already answered are left alone, so re-catching does not re-run them.
+
+Whether there is anything to press is the page's answer, not a guess from the
+form: a check showing an enabled **Check feedback** button has not been asked
+yet. A check field is found by its testid where the page spells it
+`feedbackButton`, and by the button's own text where it does not, so a renamed
+wrapper cannot hide one.
 
 The answers can take a while, so the status line counts them off — *"Running the
 feedback checks — 2 of 5 answered…"* — and the Catch button is held until they
@@ -307,13 +333,24 @@ A catch belongs to the tab it was started on. Move to another tab while it is
 waiting and it keeps reading that page, not the one now in front; when it
 finishes it files the result in that tab's own session, ready when you go back.
 
-Nothing is pressed when there is nothing to judge:
+Nothing is pressed when there is nothing to press, and the status line says
+which of these it was:
 
-- **a Refinement page whose criteria list is still empty** — that is a task
-  nobody has written yet, so the checks are skipped and the criteria come from
-  Provided Rubrics as usual;
-- an empty prompt;
+- the page carries no checks at all;
+- every check on it has already answered — the ordinary case on a re-catch, and
+  the only one the status line passes over in silence;
+- the page has their buttons disabled, so they are not ready to be asked;
+- the page has a **User Prompt** box of its own and it is empty;
 - the toggle below turned off.
+
+**A Refinement page's checks are pressed on the first catch**, which is the
+catch that needs them: a refinement task arrives with its checks unrun. This
+used to be the one page where nothing was ever pressed, because both of the old
+guesses misread it — its criteria list opens empty, which was taken for "nothing
+to judge yet", and its prompt is read-only rather than a box, which tripped the
+empty-prompt skip. Neither is asked any more. The empty criteria list still
+decides where the *criteria* are read from (Provided Rubrics), which is a
+separate question and unchanged.
 
 **Run the feedback checks first** on the Catch tab turns this off, for when you
 want to read the page as it stands without asking the server for anything.
@@ -337,15 +374,21 @@ back:
   "uid": "a7bf2291-1382-425b-a12e-31a5a6246399",
   "content": {
     "taskNotes": [
-      { "title": "Reviewer Feedback", "time": "9/2/26, 4:15 AM", "text": "Prompt reads naturally now…" }
+      { "title": "Reviewer Feedback", "time": "9/2/26, 4:15 AM", "text": "Prompt reads naturally now…", "latest": true, "focus": true }
     ],
+    "focus": {
+      "on": "reviewer feedback",
+      "why": "The automated run says all checks passed, so the auto-checking is not what is blocking…",
+      "note": { "title": "Reviewer Feedback", "time": "9/2/26, 4:15 AM" }
+    },
+    "autoEvalPassed": true,
     "sector": "Construction",
     "tier": "Tier 2",
     "areasOfFocus": "Golden Solution, Rubrics",
     "prompt": "Priya has me picking how we claw back…",
     "criteria": [{ "n": 1, "criterion": "The remaining work content is…", "weight": 2 }],
     "onetOccupation": "47-1011.00|First-Line Supervisors of Construction Trades…",
-    "fields": [{ "label": "Safety Check", "value": "Safety screen: nothing blocking." }],
+    "fields": [{ "label": "Safety Check", "value": "Safety screen: nothing blocking.", "auto": true }],
     "pendingChecks": ["Prompt Quality"]
   },
   "criteria": [{ "criterion": "The remaining work content is…", "weight": 2 }]
@@ -376,9 +419,14 @@ payload can be fed straight back in.
   what matters and it is kept.
   Collapsed ones are opened to read them. The header runs label and timestamp
   together ("Reviewer Feedback9/2/26, 4:15 AM"), so they are split into `title`
-  and `time`. **An "Automated feedback" note whose body mentions a failure is
-  left out** — passing auto-evals are kept. "Section 1 – …" accordions are not
-  notes and are ignored.
+  and `time`. Every note is kept, failing automated runs included — which one
+  the block leads with is settled by **Focus**, above. "Section 1 – …"
+  accordions are not notes and are ignored.
+- **focus** — which of the two problems the task is waiting on, `on`
+  (`auto-evaluation` or `reviewer feedback`), `why` in a sentence, and the
+  `note` it points at; the note itself is flagged `focus: true` in `taskNotes`.
+  `autoEvalPassed` says separately whether the newest automated run said it
+  passed, and is absent when no automated run is readable on the page.
 - **Criteria on a Refinement page** — the editable list first. A refinement task
   usually opens with that list still blank, and when it is, the criteria are read
   from the read-only **Provided Rubrics** document instead: each
@@ -404,7 +452,7 @@ from them:
 
 | Sample | Detected | UID | Sector | Criteria | Fields | Task notes |
 |---|---|---|---|---|---|---|
-| Submission | Submission (blurb) | ✓ | Mining, Quarrying, and Oil and Gas Extraction | 30 of 30 | 15 | Reviewer Feedback (the Automated one said "AutoEval execution failed" and was dropped) |
+| Submission | Submission (blurb) | ✓ | Mining, Quarrying, and Oil and Gas Extraction | 30 of 30 | 15 | Reviewer Feedback + Automated feedback ("AutoEval execution failed", so the focus is the auto-checking) |
 | Review | Review (heading) | ✓ | Construction | 21 of 21 | 16 | Automated feedback + Reviewer Feedback |
 | Refinement | Refinement (blurb) | ✓ | Professional, Scientific, and Technical Services (+ Tier 2, Areas of Focus) | 17, from Provided Rubrics (the list was empty) | 1 | Correction Feedback + Agentic Rubric Quality Check |
 | Review, with failing checks | Review (heading) | ✓ | Construction | 32 of 32 | 16 | Automated feedback + Reviewer Feedback, **plus 2 failed checks** |
