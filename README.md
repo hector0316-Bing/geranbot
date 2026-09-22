@@ -139,13 +139,24 @@ once. Whatever is already in a field is cleared first.
 Either way the page's own validation, character counter and autosave fire
 exactly as they do for a person.
 
-**Pace** sets the keystroke rhythm when typing. **Gap** sets how long it waits
-after each field before moving to the next — 0.5s, 1s, **2s (default)** or 4s —
-so the page has time to validate, autosave and settle between entries.
+**Pace** sets the keystroke rhythm when typing — Fast, **Human (default)**,
+Careful or Unhurried.
+
+**Gap** sets how long it waits after each field before moving to the next —
+0.5s, 1s, **2s (default)**, 3s, 4s or 5s — so the page has time to validate,
+autosave and settle between entries.
+
+Gap paces the whole run, not only the wait between fields. Opening a section,
+adding one, confirming a delete and waiting on a newly mounted field are all
+given a sixth of the gap to settle, floored at 120ms and capped at 0.9s — so 2s
+gives each click a third of a second, 5s gives it just over four fifths. These
+used to stand at a fixed 120ms whatever the run was paced at, which spaced out
+the fields while every click around them still came as fast as the browser
+could fire it. A catch keeps to the 120ms default; only a fill is paced.
 
 The gap is what governs how long a run takes: roughly (criteria x 2 fields) x
-gap. Thirty criteria at the 2s default is about two minutes. Stop takes effect
-within a tenth of a second even mid-gap.
+gap. Thirty criteria is about two minutes at the 2s default, and about five at
+5s. Stop takes effect within a tenth of a second even mid-gap.
 
 While it runs the button turns into **Stop** and the status line shows
 `typing 4/12…`. You can close the panel; the run continues, and reopening it

@@ -127,6 +127,24 @@
     if (cancelled) throw new Error('Stopped.');
   }
 
+  // How long the page is given to settle after a structural click - opening a
+  // section, adding one, confirming a delete, waiting on a newly mounted field.
+  //
+  // These used to stand at a fixed 120ms whatever the run was paced at, which
+  // made Gap a setting about one pause out of several: the fields were spaced
+  // out while every click around them still came as fast as the browser could
+  // fire it. A page that validates and autosaves between steps wants the room
+  // in both places, so the two move together - pace the run slower and every
+  // step in it is given more room.
+  const SETTLE = 120; // the default, and what a catch keeps to
+  let settleMs = SETTLE;
+
+  function settleFor(gap) {
+    // A sixth of the gap, never below the old fixed wait and capped so the
+    // clicks cannot become the slowest part of a run.
+    return Math.min(900, Math.max(SETTLE, Math.round(gap / 6)));
+  }
+
   // A long wait in one piece would leave Stop unresponsive for its whole length,
   // so sit out the gap in slices and check between them.
   //
@@ -868,7 +886,7 @@
     if (!isCollapsed(inst)) return false;
     triggerOf(inst)?.click();
     await until(() => !isCollapsed(inst) && fieldsOf(inst).length > 0, { timeout: 2000 });
-    await wait(80);
+    await wait(settleMs);
     return true;
   }
 
@@ -897,9 +915,9 @@
         tried.add(btn);
         btn.click();
         opened++;
-        await wait(60);
+        await wait(Math.round(settleMs / 2));
       }
-      await wait(200); // let the newly mounted content settle
+      await wait(settleMs * 2); // let the newly mounted content settle
     }
     return opened;
   }
@@ -952,11 +970,11 @@
       );
     }
     btn.scrollIntoView({ block: 'center' });
-    await wait(120);
+    await wait(settleMs);
     btn.click();
     const grew = await until(() => getInstances().length > before);
     if (!grew) throw new Error(`Clicked "${buttonText(btn)}" but no new section appeared.`);
-    await wait(120);
+    await wait(settleMs);
   }
 
   /* ---------- the "are you sure?" step ---------- */
@@ -1001,7 +1019,7 @@
 
     if (!choice) return false;
     choice.b.click();
-    await wait(120);
+    await wait(settleMs);
     return true;
   }
 
@@ -1014,13 +1032,13 @@
       if (!del) break; // no delete control: leave the spares rather than fail
 
       del.click();
-      await wait(120);
+      await wait(settleMs);
       await confirmIfAsked();
 
       const shrank = await until(() => getInstances().length < current);
       if (!shrank) break; // the page did not remove it; report the leftovers
       current = getInstances().length;
-      await wait(100);
+      await wait(settleMs);
     }
     return current;
   }
@@ -1791,6 +1809,7 @@
     const paste = options.entry !== 'type'; // paste per field unless asked to type
     hiddenDuringRun = false;
     const gap = Math.max(0, Number(options.gap ?? 2000)); // pause after each field
+    settleMs = settleFor(gap); // and the room every other step in the run gets
     busy = true;
     cancelled = false;
     stayAwake();
@@ -1863,6 +1882,7 @@
     } finally {
       busy = false;
       progress = null;
+      settleMs = SETTLE;
       letSleep();
     }
 
