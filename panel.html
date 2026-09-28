@@ -21,7 +21,7 @@
     <div id="tabs" class="tabs" role="tablist">
       <button id="tabCatch" class="tab" type="button" role="tab"
               aria-selected="true" aria-controls="viewCatch">Catch</button>
-      <button id="tabInput" class="tab" type="button" role="tab"
+      <button id="tabInput" class="tab not-terminus" type="button" role="tab"
               aria-selected="false" aria-controls="viewInput">Input</button>
     </div>
   </div>
@@ -41,6 +41,12 @@
         <span class="pick-note">Preference comparisons — Response A against Response B.
           Catches the whole task and types the answers back in.</span>
       </button>
+      <button class="pick-card" type="button" data-project="terminus">
+        <span class="pick-name">Terminus-3rd</span>
+        <span class="pick-note">Terminal Bench 3.0 tasks — Submission.
+          Catches the task notes, the judge panel, Oracle / NOP, the summary
+          and the quality checks that did not pass.</span>
+      </button>
     </div>
 
     <p id="pickHint" class="hint"></p>
@@ -55,12 +61,12 @@
         <label><input type="radio" name="mode" value="refinement"><span>Refinement</span></label>
       </div>
       <p id="modeHint" class="hint"></p>
-
-      <label class="check">
-        <input type="checkbox" id="runChecks" checked>
-        Run the feedback checks first
-      </label>
     </div>
+
+    <label class="check not-rudder">
+      <input type="checkbox" id="runChecks" checked>
+      Run the feedback checks first
+    </label>
 
     <div class="only-rudder">
       <p id="stageHint" class="hint">The task, its notes and any answers already on it.</p>
@@ -136,7 +142,7 @@
       <div class="links">
         <button id="copyJson" class="link">Copy JSON</button>
         <button id="download" class="link">Download JSON</button>
-        <button id="toInput" class="link">Send criteria to input</button>
+        <button id="toInput" class="link not-terminus">Send criteria to input</button>
       </div>
     </section>
   </section>

@@ -2,8 +2,9 @@
 
 Chrome extension (MV3) that runs in the browser's **side panel**. It reads a
 task page into one copyable block, and writes an answer back into it one field
-at a time, at a human pace. Two projects are handled: **Geranium**'s criteria
-and rubric pages, and **Rudder**'s preference comparisons.
+at a time, at a human pace. Three projects are handled: **Geranium**'s criteria
+and rubric pages, **Rudder**'s preference comparisons, and **Terminus-3rd**'s
+Terminal Bench 3.0 tasks, which are only read.
 
 ## Install
 
@@ -20,7 +21,7 @@ the page scrolls. Drag its inner edge to resize. Needs Chrome 116 or newer.
 Nothing runs until you open the panel — the page script is injected on demand
 under `activeTab`, so the extension has no access to any other site.
 
-## Two projects
+## Three projects
 
 Before anything else the panel asks which project the task belongs to, and the
 answer holds for that tab:
@@ -29,17 +30,21 @@ answer holds for that tab:
   Everything from here down to **Field names** is about these.
 - **Rudder** — preference comparisons, where two model responses are rated side
   by side against a scale. **Rudder tasks**, near the end, is about those.
+- **Terminus-3rd** — Terminal Bench 3.0 tasks, uploaded as a zip. Only read
+  from: there is nothing to type back in, so it has no Input tab.
+  **Terminus-3rd tasks**, near the end, is about those.
 
-The page usually says which it is — Geranium by its criteria list, Rudder by its
-split document review — and whichever it looks like is marked **on this page**
-in the chooser, so the answer is normally a confirmation rather than a decision.
-It stays a choice because the two readers have nothing in common: the wrong one
+The page usually says which it is — Geranium by its criteria list, Terminus by
+its feedback boxes, Rudder by its split document review — and whichever it
+looks like is marked **on this page** in the chooser, so the answer is normally
+a confirmation rather than a decision.
+It stays a choice because the readers have nothing in common: the wrong one
 on a page reads nothing and fills nothing, and it is better to be asked than to
 find that out from an empty result.
 
 The chip beside the title says which project the tab is on, and it is the way
 back: it carries a caret pointing the way it goes, and pressing it returns to the
-chooser. Everything the two word differently — the Catch button, the input
+chooser. Everything the projects word differently — the Catch button, the input
 template, the options each offers — changes with the choice.
 
 Picking the wrong one is ordinary and easy, so it does not have to be noticed
@@ -643,6 +648,39 @@ flag with no such label, a value cut to the field's limit.
 
 **Submit is never pressed.** The form is filled, and that is where it stops.
 
+## Terminus-3rd tasks
+
+A Terminal Bench 3.0 page is headed "Submission" just like Geranium's, so it is
+recognised by its own feedback boxes (or a "Terminal bench" label) before the
+heading is looked at. Only Submission has been seen so far. A page headed
+"Review" is recorded as stage `review` and read the same way until a sample
+shows what a Review page carries of its own.
+
+A catch takes, in this order:
+
+1. **Task notes** — the note accordions, such as "Automated feedback", newest
+   first. The "Do you disagree with the automated feedback?" box is left off the
+   text. A form section titled like a note ("Terminal bench 3.0 task
+   feedback") is not a note: a note never holds form fields.
+2. **Quality Judge Panel Feedback**, in full.
+3. **Oracle / NOP validation**, when it has run.
+4. **Summary** — only its own lines. The Summary repeats the whole Quality Judge
+   Panel under a line or two of its own, so the repeat is dropped and a line
+   says where to find it.
+5. **Quality check summary** — only the lines that did not pass (fail, warning,
+   error), each under the `##` heading it sat under, with any explanation that
+   runs onto the following lines. When all pass, one line says so, for example
+   *All 48 checks passed.* A summary laid out some other way is kept whole
+   rather than guessed at.
+6. **Failed static checks** — "Fast static checks" sits behind a **Check
+   feedback** button. The same **Run the feedback checks first** toggle decides
+   whether a catch presses it, and only a failing result is carried.
+
+Boxes still showing "No code provided" are left out. The JSON carries the same
+parts as `taskNotes`, `qualityPanel`, `oracleNop`, `summary`,
+`qualityChecks: { total, failed: [{ section, text }] }` and
+`failedStaticChecks`.
+
 ## Notes on the page it drives
 
 - **Collapsed sections are expanded first.** Radix unmounts closed accordion
@@ -669,6 +707,7 @@ flag with no such label, a value cut to the field's limit.
   takes raster icons, so [tools/make-icons.mjs](tools/make-icons.mjs) renders it
   to `icons/icon{16,32,48,128}.png`. Edit the SVG, then re-run:
   `node <browser-automation>/browser.mjs about:blank --script tools/make-icons.mjs`
-- [content.js](content.js) — page side, both projects: read fields, fill values,
-  add/delete sections on Geranium, choose ratings and tick flags on Rudder
+- [content.js](content.js) — page side, all three projects: read fields, fill
+  values, add/delete sections on Geranium, choose ratings and tick flags on
+  Rudder, read the feedback on Terminus-3rd
 - [panel.html](panel.html) / [panel.css](panel.css) / [panel.js](panel.js) — the side panel UI

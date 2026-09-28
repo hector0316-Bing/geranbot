@@ -441,6 +441,9 @@
       const id = btn.getAttribute('aria-controls');
       const region = (id && document.getElementById(id))
         || btn.closest('[data-state]')?.querySelector('[role="region"]');
+      // A form section can be titled like a note ("Terminal bench 3.0 task
+      // feedback"), but a note never holds form fields.
+      if (region?.querySelector('[data-testid^="field-"]')) continue;
       let text = (region?.innerText || region?.textContent || '').trim();
 
       // The automated note ends with a question of its own - "Do you disagree
@@ -1166,8 +1169,12 @@
   // Which project's page this is. The criteria list belongs to Geranium alone
   // and the split document review to Rudder, so either one settles it on its
   // own; the heading is consulted only when neither has mounted yet.
+  //
+  // Terminus is asked before the heading: its page is headed "Submission" too,
+  // which on its own reads as a Geranium submission.
   function detectProject() {
     if (document.querySelector(CONTAINER)) return { project: 'geranium', source: 'the criteria list' };
+    if (isTerminusPage()) return { project: 'terminus', source: 'its feedback boxes' };
     if (isRudderPage()) return { project: 'rudder', source: 'the review layout' };
     if (/\brudder\b/i.test(headingText())) return { project: 'rudder', source: 'the page heading' };
     if (detectMode().mode) return { project: 'geranium', source: 'the page heading' };
@@ -1677,6 +1684,155 @@
     };
   }
 
+  /* ---------- Terminus-3rd ----------
+     A Terminal Bench 3.0 task is uploaded as a zip, and everything worth
+     carrying off the page is what the machine said about it: the task notes,
+     the Quality Judge Panel, the Oracle / NOP run, the Summary, and whichever
+     lines of the quality check summary did not pass. There is nothing to type
+     back in. Only Submission has been seen so far; a Review page is read the
+     same way until it shows something of its own. */
+
+  // Labels are what the page shows; the testids are the page's own names for
+  // the same boxes, and either finds them.
+  const TERMINUS_FIELDS = [
+    { key: 'qualityPanel', id: 'quality_panel_judge_feedback', label: /^quality judge panel feedback$/ },
+    { key: 'oracleNop', id: 'oracle_nop_validation', label: /^oracle\s*\/\s*nop validation$/ },
+    { key: 'summary', id: 'text_summary', label: /^summary$/ },
+    { key: 'qualityChecks', id: 'quality_check_summary', label: /^quality check summary$/ }
+  ];
+
+  function isTerminusPage() {
+    if (TERMINUS_FIELDS.some((f) => document.querySelector(`[data-testid="field-${f.id}"]`))) return true;
+    return Array.from(document.querySelectorAll('label, h1, h2, h3'))
+      .some((el) => /terminal\s*bench/i.test(el.textContent || ''));
+  }
+
+  function terminusStage() {
+    return /^review$/i.test(headingText()) ? 'review' : 'submission';
+  }
+
+  function terminusField(want) {
+    const byId = document.querySelector(`[data-testid="field-${want.id}"]`);
+    if (byId) return byId;
+    return Array.from(document.querySelectorAll('[data-testid^="field-"]'))
+      .find((f) => want.label.test(fieldLabel(f).toLowerCase())) || null;
+  }
+
+  // The quality check summary is a list of "✅ pass - verifiable: …" lines
+  // under "## …" headings, most of them passes. Only what did not pass is
+  // worth the reader's time, with the heading it sat under; an explanation
+  // that runs onto following lines stays with its check.
+  const QC_LINE = /^\s*(?:[^\w\s]+\s*)?(pass(?:ed)?|fail(?:ed|ure)?|warn(?:ing)?|error|skip(?:ped)?|n\/a|not[_ ]applicable)\b\s*[-–—:]\s*(.*)$/i;
+
+  function failedQualityChecks(text) {
+    let section = null;
+    let total = 0;
+    let current = null;
+    const failed = [];
+    for (const line of String(text).split('\n')) {
+      const heading = line.match(/^\s*#+\s*(.+?)\s*$/);
+      if (heading) { section = heading[1]; current = null; continue; }
+      const m = line.match(QC_LINE);
+      if (m) {
+        total++;
+        const ok = /^(pass|n\/a|not|skip)/i.test(m[1]);
+        current = ok ? null : { section, text: line.trim() };
+        if (current) failed.push(current);
+      } else if (current && line.trim()) {
+        current.text += `\n${line.trim()}`;
+      } else if (!line.trim()) {
+        current = null;
+      }
+    }
+    return { total, failed };
+  }
+
+  async function readTerminus(options = {}) {
+    const opened = await expandEverything();
+
+    // "Fast static checks" sits behind a Check feedback button like Geranium's,
+    // and the same toggle decides whether a catch presses it.
+    let checks = null;
+    let checksSkipped = null;
+    const fields = checkFields();
+    const unanswered = fields.filter((f) => !checkFinished(f));
+    if (options.runChecks === false) checksSkipped = 'turned off';
+    else if (!fields.length) checksSkipped = 'no checks on this page';
+    else if (!unanswered.length) checksSkipped = 'already answered';
+    else if (!unanswered.some((f) => checkRunButton(f))) checksSkipped = 'the buttons are disabled';
+    else checks = await runFeedbackChecks();
+    if (checks?.started) await expandEverything();
+
+    const notes = await readNotes();
+    markLatest(notes);
+    const autos = notes.filter((n) => AUTO_NOTE.test(n.title));
+    const newestAuto = newestOf(autos);
+    const verdict = newestAuto ? autoVerdict(newestAuto.text) : null;
+
+    const found = {};
+    for (const want of TERMINUS_FIELDS) {
+      const el = terminusField(want);
+      if (!el) continue;
+      const value = fieldValue(el);
+      if (typeof value !== 'string' || !value.trim() || /^no code provided$/i.test(value.trim())) continue;
+      found[want.key] = value.trim();
+    }
+
+    const stage = terminusStage();
+    const content = { stage };
+    if (notes.length) {
+      content.taskNotes = notes;
+      const latest = notes.find((n) => n.latest);
+      if (latest) content.latestNote = { title: latest.title, time: latest.time || null };
+    }
+    if (verdict) content.autoEvalPassed = verdict === 'passed';
+    if (found.qualityPanel) content.qualityPanel = found.qualityPanel;
+    if (found.oracleNop) content.oracleNop = found.oracleNop;
+
+    // The Summary repeats the whole Quality Judge Panel under a line or two of
+    // its own. Those lines are the Summary; the repeat is already above.
+    if (found.summary) {
+      let summary = found.summary;
+      if (found.qualityPanel && summary.includes(found.qualityPanel)) {
+        summary = summary.replace(found.qualityPanel, '').replace(/\n{3,}/g, '\n\n').trim();
+        content.summaryRepeatsPanel = true;
+      }
+      if (summary) content.summary = summary;
+    }
+
+    if (found.qualityChecks) {
+      const { total, failed } = failedQualityChecks(found.qualityChecks);
+      // A summary laid out some other way is kept whole rather than guessed at.
+      content.qualityChecks = total
+        ? { total, failed }
+        : { total: 0, failed: [], text: found.qualityChecks };
+    }
+
+    const failedChecks = readCheckResults().filter((r) => !r.passed);
+    if (failedChecks.length) content.failedStaticChecks = failedChecks;
+    if (checks?.waiting?.length) content.pendingChecks = checks.waiting;
+
+    const uid = readUid();
+    if (!uid && !notes.length && !Object.keys(found).length) {
+      throw new Error('Nothing found on this page - no UID, task notes or feedback. Is this a Terminus task?');
+    }
+
+    const data = { project: 'terminus', stage };
+    if (uid) data.uid = uid;
+    data.content = content;
+    return {
+      data,
+      meta: {
+        project: 'terminus',
+        opened,
+        notes: notes.length,
+        found: Object.keys(found),
+        checks,
+        checksSkipped
+      }
+    };
+  }
+
   /* ---------- operations ---------- */
 
   // Everything below runs for as long as the page takes, so hold the tab awake
@@ -1689,7 +1845,9 @@
     const project = options.project || detectProject().project;
     stayAwake();
     try {
-      return project === 'rudder' ? await readRudder() : await readPage(options);
+      if (project === 'rudder') return await readRudder();
+      if (project === 'terminus') return await readTerminus(options);
+      return await readPage(options);
     } finally {
       letSleep();
     }
@@ -1988,6 +2146,7 @@
               detected: detectMode(),
               project: detectProject(),
               rudderFields: isRudderPage() ? rudderFields().length : 0,
+              terminusStage: isTerminusPage() ? terminusStage() : null,
               busy,
               progress,
               checkProgress

@@ -519,7 +519,11 @@ button.link:hover { color: var(--fg); background: var(--field); }
 
 /* Each project shows its own controls and none of the other's. */
 body[data-project="geranium"] .only-rudder,
-body[data-project="rudder"] .only-geranium { display: none !important; }
+body[data-project="rudder"] .only-geranium,
+body[data-project="terminus"] .only-geranium,
+body[data-project="terminus"] .only-rudder,
+body[data-project="rudder"] .not-rudder,
+body[data-project="terminus"] .not-terminus { display: none !important; }
 
 .hint code {
   padding: 0 3px;
