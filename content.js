@@ -1160,23 +1160,26 @@
     }
   }
 
+  // The split document review used to be Rudder's alone and was taken as proof
+  // of it. Every project now sits in that layout - Geranium Refinement and
+  // Terminus carry the same left panel and submit button - so only what Rudder
+  // asks for itself counts: its rating sections, or its name in the heading.
+  const RUDDER_SECTION = '[data-testid^="section-Rating Assessment"], [data-testid^="section-Overall preference"]';
+
   function isRudderPage() {
-    return !!(document.querySelector(LEFT_PANEL)
-      || document.querySelector('[data-testid="document-review-primary-submit"]')
-      || document.querySelector('[data-testid^="section-Rating Assessment"]'));
+    return !!document.querySelector(RUDDER_SECTION) || /\brudder\b/i.test(headingText());
   }
 
-  // Which project's page this is. The criteria list belongs to Geranium alone
-  // and the split document review to Rudder, so either one settles it on its
-  // own; the heading is consulted only when neither has mounted yet.
-  //
-  // Terminus is asked before the heading: its page is headed "Submission" too,
-  // which on its own reads as a Geranium submission.
+  // Which project's page this is. Each is settled by something only it has:
+  // Geranium's criteria list, Terminus's feedback boxes, Rudder's rating
+  // sections, then Geranium's "In this … project" blurb. The heading alone is
+  // the last resort - Terminus is headed "Submission" as Geranium is, and a
+  // Refinement page's first <h1> can be the "Rubric" inside its documents.
   function detectProject() {
     if (document.querySelector(CONTAINER)) return { project: 'geranium', source: 'the criteria list' };
     if (isTerminusPage()) return { project: 'terminus', source: 'its feedback boxes' };
-    if (isRudderPage()) return { project: 'rudder', source: 'the review layout' };
-    if (/\brudder\b/i.test(headingText())) return { project: 'rudder', source: 'the page heading' };
+    if (isRudderPage()) return { project: 'rudder', source: 'its rating sections' };
+    if (projectPhrase()) return { project: 'geranium', source: 'the page blurb' };
     if (detectMode().mode) return { project: 'geranium', source: 'the page heading' };
     return { project: null, source: 'unknown' };
   }

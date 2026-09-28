@@ -34,10 +34,13 @@ answer holds for that tab:
   from: there is nothing to type back in, so it has no Input tab.
   **Terminus-3rd tasks**, near the end, is about those.
 
-The page usually says which it is — Geranium by its criteria list, Terminus by
-its feedback boxes, Rudder by its split document review — and whichever it
-looks like is marked **on this page** in the chooser, so the answer is normally
-a confirmation rather than a decision.
+The page usually says which it is — Geranium by its criteria list or its "In
+this refinery / prompt generation project" blurb, Terminus by its feedback
+boxes, Rudder by its "Rating Assessment" and "Overall preference" sections or
+its name in the heading — and whichever it looks like is marked **on this
+page** in the chooser, so the answer is normally a confirmation rather than a
+decision. The split document-review layout used to be taken as Rudder's, but
+every project now sits in it, so it proves nothing on its own.
 It stays a choice because the readers have nothing in common: the wrong one
 on a page reads nothing and fills nothing, and it is better to be asked than to
 find that out from an empty result.
