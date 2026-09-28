@@ -418,10 +418,17 @@
     return { latest, focus, autoEvalPassed };
   }
 
+  // The note accordions were Radix and are now base-ui, which marks its triggers
+  // only with aria-controls/aria-expanded, so either kind counts. Radix also
+  // tags checkboxes as collection items, but those carry no aria-expanded and
+  // their text never reads as a note title.
+  const NOTE_TRIGGER = 'button[data-radix-collection-item], button[aria-controls][aria-expanded]';
+
   async function readNotes() {
     const out = [];
-    for (const btn of document.querySelectorAll('button[data-radix-collection-item]')) {
+    for (const btn of document.querySelectorAll(NOTE_TRIGGER)) {
       if (btn.closest(INSTANCE)) continue; // criteria sections are handled separately
+      if (btn.closest('[data-testid^="field-"]')) continue; // a form field, not a note
 
       const { title, time } = noteHeading(btn);
       if (!title || !NOTE_TITLE.test(title)) continue;
@@ -434,14 +441,27 @@
       const id = btn.getAttribute('aria-controls');
       const region = (id && document.getElementById(id))
         || btn.closest('[data-state]')?.querySelector('[role="region"]');
-      const text = (region?.innerText || region?.textContent || '').trim();
+      let text = (region?.innerText || region?.textContent || '').trim();
+
+      // The automated note ends with a question of its own - "Do you disagree
+      // with the automated feedback?" - which is a box to tick, not feedback.
+      const asks = [];
+      for (const box of region ? region.querySelectorAll('[role="checkbox"]') : []) {
+        const label = (box.innerText || box.textContent || '').replace(/\s+/g, ' ').trim()
+          || (box.getAttribute('aria-label') || '').trim();
+        if (!label) continue;
+        asks.push({ question: label, answer: box.getAttribute('aria-checked') === 'true' });
+        if (text.endsWith(label)) text = text.slice(0, -label.length).trim();
+      }
       if (!text) continue;
 
       // A failing automated run used to be dropped as noise. It is the opposite:
       // when the auto-evaluation does not pass it becomes the newest note on the
       // page, and it is the thing that says what state the task is actually in.
 
-      out.push(time ? { title, time, text } : { title, text });
+      const note = time ? { title, time, text } : { title, text };
+      if (asks.length) note.asks = asks;
+      out.push(note);
     }
     return out;
   }
@@ -477,9 +497,15 @@
   function readErrorBlocks() {
     const out = [];
     const seen = new Set();
+    const checks = new Set(checkFields());
     for (const el of document.querySelectorAll('[class*="bg-error-subtle"]')) {
       // A red block nested in another would repeat its parent's text.
       if (el.parentElement?.closest('[class*="bg-error-subtle"]')) continue;
+
+      // A check's own result panel is carried whole, pass or fail, by
+      // readCheckResults; listing it here as well would say it twice.
+      const own = el.closest('[data-testid^="field-"]');
+      if (own && !el.closest(INSTANCE) && checks.has(own)) continue;
 
       const text = (el.innerText || el.textContent || '').replace(/[ \t]+\n/g, '\n').trim();
       if (!text) continue;
@@ -526,10 +552,52 @@
       .find((b) => !b.disabled && CHECK_BUTTON.test(buttonText(b))) || null;
   }
 
+  const RESULT_PANEL = '[class*="bg-success-subtle"], [class*="bg-error-subtle"], [class*="bg-warning-subtle"]';
+
   function checkFinished(field) {
-    if (field.querySelector('[class*="bg-success-subtle"], [class*="bg-error-subtle"]')) return true;
+    if (field.querySelector(RESULT_PANEL)) return true;
     return Array.from(field.querySelectorAll('button'))
       .some((b) => /clear feedback/i.test(buttonText(b)));
+  }
+
+  // What each check said once its button was pressed. A result panel is a
+  // header - the check's own name and a PASS/FAIL badge - over the explanation,
+  // with thumbs-up/down buttons at the foot that are not part of the answer.
+  // One field can answer with several panels, one per sub-check.
+  function readCheckResults() {
+    const out = [];
+    const seen = new Set();
+    for (const field of checkFields()) {
+      if (field.closest(INSTANCE)) continue;
+      const check = fieldLabel(field);
+      for (const panel of field.querySelectorAll(RESULT_PANEL)) {
+        if (seen.has(panel) || panel.parentElement?.closest(RESULT_PANEL)) continue;
+        seen.add(panel);
+
+        const [header, ...body] = Array.from(panel.children);
+        const bits = Array.from(header?.querySelectorAll('div, span') || [])
+          .filter((el) => !el.children.length)
+          .map((el) => (el.textContent || '').replace(/\s+/g, ' ').trim())
+          .filter(Boolean);
+        const verdict = bits.find((t) => /^(pass(ed)?|fail(ed)?|warn(ing)?|error)$/i.test(t)) || null;
+        const name = bits.find((t) => t !== verdict && /\w/.test(t)) || null;
+        const text = body
+          .filter((el) => !el.querySelector('button') || (el.innerText || el.textContent || '').trim())
+          .map((el) => blockText(el))
+          .filter(Boolean)
+          .join('\n\n');
+
+        const passed = verdict
+          ? /^pass/i.test(verdict)
+          : /bg-success-subtle/.test(panel.className || '');
+        const result = { check, passed };
+        if (name && name.toLowerCase() !== check.toLowerCase()) result.name = name;
+        if (verdict) result.verdict = verdict.toUpperCase();
+        if (text) result.text = text;
+        out.push(result);
+      }
+    }
+    return out;
   }
 
   // The editable User Prompt box. Refinement has none - it shows the prompt it
@@ -687,9 +755,15 @@
     { auto: true, match: /^safety check$/ },
     { auto: true, match: /^auto-evaluation llm generated files check/ },
     { auto: true, match: /^auto-evaluation rubric quality check submission feedback$/ },
+    { auto: true, match: /^golden solution self[- ]?consistency check$/ },
     { auto: true, match: /^golden solution leakage check$/ },
+    { auto: true, match: /^golden solution entity grounding check$/ },
+    { auto: true, match: /^golden solution role check$/ },
     { auto: true, match: /^rubric golden alignment check$/ },
-    { auto: true, match: /^rubric value grounding check$/ }
+    { auto: true, match: /^rubric value grounding check$/ },
+    { auto: true, match: /^reference soundness check$/ },
+    { auto: true, match: /^quality judge check$/ },
+    { auto: true, match: /^comprehensive rubric feedback and recommendations$/ }
   ];
 
   function readFields() {
@@ -1754,6 +1828,8 @@
       }
     }
     if (list.length) content.fields = list;
+    const checkResults = readCheckResults();
+    if (checkResults.length) content.checkResults = checkResults;
     const errors = readErrorBlocks();
     if (errors.length) content.errors = errors;
     // Say so in the content itself, not only in the panel: a block that is

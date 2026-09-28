@@ -250,6 +250,16 @@ function renderContent(c) {
   const autoBlock = () => block('Auto-evaluation feedback (below the golden solution upload)',
     autoFields.map((f) => `[${f.label}]\n${String(f.value)}`).join('\n\n'));
 
+  // What each "Check feedback" button answered, failures first. These are the
+  // other half of the auto-checking, so they travel with the boxes above.
+  const checkResults = [...(c.checkResults || [])].sort((a, b) => a.passed - b.passed);
+  const checksBlock = () => block('Check feedback results',
+    checkResults.map((r) => {
+      const verdict = r.verdict || (r.passed ? 'PASS' : 'FAIL');
+      const head = `[${r.check}]${r.name ? ` ${r.name}` : ''}: ${verdict}`;
+      return r.text ? `${head}\n${r.text}` : head;
+    }).join('\n\n'));
+
   // One note says what this task is waiting on, and which one it is decides
   // what the rest of the block is for. A failing automated run means the
   // auto-checking is blocking, so its results lead; a reviewer's note - or an
@@ -268,12 +278,15 @@ function renderContent(c) {
     // Straight after the note that sent the reader here, ahead of the older
     // notes: on a task the machine is blocking, this is the whole answer.
     if (onAuto && autoFields.length) autoBlock();
+    if (onAuto && checkResults.length) checksBlock();
 
     if (rest.length) {
       block(lead ? 'Other task notes' : 'Task notes',
         rest.map((n) => `[${n.title}${n.time ? ` - ${n.time}` : ''}]\n${n.text}`).join('\n\n'));
     }
   }
+
+  if (!onAuto && checkResults.length) checksBlock();
 
   if (c.errors?.length) {
     const errs = c.errors
@@ -601,8 +614,11 @@ catchBtn.addEventListener('click', async () => {
     }, ranOn);
     data.caughtAt = stamp();
 
+    // Whatever sat in the input box was written against the last reading, so a
+    // fresh catch empties it rather than leave a stale answer to be typed in.
     if (mine()) {
       showResult(data);
+      editor.value = '';
       save();
     } else {
       // File it under the tab it came from, so it is waiting there on return.
@@ -632,6 +648,11 @@ catchBtn.addEventListener('click', async () => {
     if (c.sector) extras.push('sector');
     if (c.tier) extras.push('tier');
     if (c.fields) extras.push(`${c.fields.length} fields`);
+    if (c.checkResults) {
+      const failed = c.checkResults.filter((r) => !r.passed).length;
+      extras.push(`${c.checkResults.length} check result${c.checkResults.length === 1 ? '' : 's'}`
+        + (failed ? ` (${failed} failed)` : ''));
+    }
     if (c.errors) extras.push(`${c.errors.length} failed check${c.errors.length === 1 ? '' : 's'}`);
 
     const fromRubric = meta?.criteriaSource === 'provided rubrics';
@@ -903,7 +924,7 @@ function save() {
 async function saveCaughtFor(tabId, data) {
   const key = `tab:${tabId}`;
   const bag = await store.get(key);
-  await store.set({ [key]: { ...(bag[key] || {}), caught: data } });
+  await store.set({ [key]: { ...(bag[key] || {}), caught: data, json: '' } });
 }
 
 async function loadSession(tabId) {

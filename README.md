@@ -219,7 +219,9 @@ nested scrollers competing for the same wheel.
   boxes. The radios and button stay pinned while the caught text scrolls under
   them.
 - **Input** holds the JSON box, which grows to fill the panel, with the entry
-  options and the action button beneath it.
+  options and the action button beneath it. A successful catch empties it: what
+  it held was written against the previous reading, and left in place it could
+  be typed into the page by mistake. A catch that fails leaves it alone.
 
 The panel follows the job: catching switches to Catch, starting a fill switches
 to Input, and **Send criteria to input** carries you across with the JSON. The
@@ -246,20 +248,27 @@ in its corner; the box flashes green when the clipboard has it.
   2. Checks still waiting, if the page was read before every check had answered
   3. Focus — the one note the task is waiting on, under a heading that says
      which kind of problem that makes it
-  4. The auto-evaluation results, but only when they are the focus
+  4. The auto-evaluation results, then the **Check feedback results**, but
+     only when they are the focus
   5. Other task notes — Reviewer Feedback, Reviewer Note, Rebuttal Note,
      Automated feedback, each with its timestamp
-  6. Failed checks — any check panel the page paints red
-  7. Prompt
-  8. Criteria — number, text and weight only, never the weight guidance text
-  9. O*NET Occupation, Tasks and Skills (Submission and Review only)
-  10. The four task questions — input file count, multi-modal, web search,
+  6. Check feedback results, when they were not the focus — what each
+     **Check feedback** button answered (Prompt Quality, Input Files Quality,
+     Golden Solution Files Quality, Rubric Quality, Name Check…), one entry per
+     sub-check with its name, PASS/FAIL and explanation, failures first
+  7. Failed checks — any other panel the page paints red
+  8. Prompt
+  9. Criteria — number, text and weight only, never the weight guidance text
+  10. O*NET Occupation, Tasks and Skills (Submission and Review only)
+  11. The four task questions — input file count, multi-modal, web search,
       manual duration
-  11. The auto-evaluation results, when they were not the focus — Golden
+  12. The auto-evaluation results, when they were not the focus — Golden
       Solution, Difficulty, input/output check, Self-Contained check, Verifier,
       Audit, Audit: Rubric and Golden Solution Alignment, Safety Check, LLM
-      generated files check, Rubric Quality Check, Golden solution leakage,
-      Rubric golden alignment, Rubric value grounding
+      generated files check, Rubric Quality Check, Golden solution self
+      consistency, leakage, entity grounding and role checks, Rubric golden
+      alignment, Rubric value grounding, Reference Soundness, Quality Judge
+      Check, Comprehensive Rubric Feedback and Recommendations
 
 Only results are taken, never the form's own instructions: the description under
 each label ("This box will only populate once the auto-evaluations finish…",
@@ -284,7 +293,7 @@ means — not its timestamp, because a passing run can carry one too:
 
 | Newest note | Its message | Focus | What leads the block |
 |---|---|---|---|
-| Automated feedback | names a failure | the auto-checking | the automated note, then **Auto-evaluation feedback (below the golden solution upload)** — every auto-eval box, pulled up from the foot of the block |
+| Automated feedback | names a failure | the auto-checking | the automated note, then **Auto-evaluation feedback (below the golden solution upload)** — every auto-eval box, pulled up from the foot of the block — then the **Check feedback results** |
 | Automated feedback | all checks passed | the reviewer's feedback | the newest reviewer note, with the auto-eval boxes left at the foot |
 | Reviewer Feedback / Note / Rebuttal | — | the reviewer's feedback | that note |
 
@@ -293,10 +302,12 @@ and the like — is read as blocking, not as passing: it is the newest word on t
 task and it is not the standing all-clear.
 
 Newest is decided on the timestamp, so a reviewer's reply after a failed run
-still leads and still points at the content. **Refinement's feedback is headed
-blocks rather than accordions and carries no timestamps at all**; when nothing
-on the page is timestamped there is no newest note, so the automated run is read
-on its own verdict — a failing "AutoEval Feedback" block makes the
+still leads and still points at the content. Refinement now carries the same
+timestamped "Automated feedback" and "Reviewer Feedback" accordions as the other
+pages, beside its older headed blocks ("Correction Feedback", "AutoEval
+Feedback", "Agentic Rubric Quality Check"), which carry no timestamps. When
+nothing on the page is timestamped there is no newest note, so the automated
+run is read on its own verdict — a failing "AutoEval Feedback" block makes the
 auto-checking the focus, a passing one hands it to the correction feedback.
 
 A failing automated run **is kept**: it used to be discarded as noise, which
@@ -422,7 +433,11 @@ payload can be fed straight back in.
 - **Tier / Areas of Focus of Feedback** — Refinement's "Tier Type" and "Areas of
   Focus of Feedback" headings.
 - **Task notes** — accordions outside the criteria list whose title mentions
-  *feedback*, *note* or *rebuttal*, plus Refinement's headed "Correction
+  *feedback*, *note* or *rebuttal*. The page moved these from Radix to base-ui
+  accordions, so a trigger is found either by Radix's collection-item marker or
+  by `aria-controls` with `aria-expanded`. The automated note ends with a "Do you
+  disagree with the automated feedback?" box; that is taken off the text and
+  kept as `asks` (question and whether it is ticked). Plus Refinement's headed "Correction
   Feedback" and "Agentic Rubric Quality Check" blocks, which are not accordions.
   **On a Refinement page whose criteria are already written**, the correction
   feedback is left out: it describes the task as it was before that work, so it
@@ -444,6 +459,11 @@ payload can be fed straight back in.
   `Criterion N - weight W` heading with the paragraphs under it. The status line
   says which of the two it used, and the JSON is the same either way, so it can
   be pasted straight back into the empty list.
+- **checkResults** — one entry per result panel under a **Check feedback**
+  button: `check` (the field's label), `name` (the sub-check's own title, such as
+  "Rubric atomicity check"), `verdict` (`PASS` / `FAIL`), `passed`, and `text`.
+  These panels are carried pass or fail, so a red one is not repeated under
+  `errors`.
 - **pendingChecks** — the checks that had not answered by the time the page was
   read. Absent, as everything absent is, when there were none.
 - **Everything else** — matched by the field's **label**, never its
@@ -467,6 +487,7 @@ from them:
 | Review | Review (heading) | ✓ | Construction | 21 of 21 | 16 | Automated feedback + Reviewer Feedback |
 | Refinement | Refinement (blurb) | ✓ | Professional, Scientific, and Technical Services (+ Tier 2, Areas of Focus) | 17, from Provided Rubrics (the list was empty) | 1 | Correction Feedback + Agentic Rubric Quality Check |
 | Review, with failing checks | Review (heading) | ✓ | Construction | 32 of 32 | 16 | Automated feedback + Reviewer Feedback, **plus 2 failed checks** |
+| Refinement, new layout | Refinement (blurb) | ✓ | Professional, Scientific, and Technical Services (+ Tier 2, Areas of Focus) | 23 of 23 | 15 auto-eval boxes (4 more still "No code provided") | Automated feedback ("Evaluation FAILED", newest, so the focus is the auto-checking) + Reviewer Feedback + Agentic Rubric Quality Check, **plus 40 check results** from 5 Check feedback buttons |
 
 That Refinement page had an empty criteria list — the task had not been written
 yet — so its 17 criteria came from the Provided Rubrics document instead.
