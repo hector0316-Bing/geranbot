@@ -738,10 +738,8 @@ catchBtn.addEventListener('click', async () => {
           : `\nAll ${qc.total} quality checks passed.`;
       }
       if (c.failedStaticChecks?.length) msg += `\n${c.failedStaticChecks.length} static check${c.failedStaticChecks.length === 1 ? '' : 's'} failed.`;
-      const waiting = meta.checks?.waiting || [];
-      if (waiting.length) msg += `\nRead before ${waiting.join(', ')} answered. Catch again once it lands.`;
       if (mine()) {
-        setStatus(msg, waiting.length ? '' : 'ok');
+        setStatus(msg, 'ok');
         refresh();
       }
       return;

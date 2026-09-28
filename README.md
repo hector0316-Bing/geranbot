@@ -673,8 +673,9 @@ A catch takes, in this order:
    *All 48 checks passed.* A summary laid out some other way is kept whole
    rather than guessed at.
 6. **Failed static checks** — "Fast static checks" sits behind a **Check
-   feedback** button. The same **Run the feedback checks first** toggle decides
-   whether a catch presses it, and only a failing result is carried.
+   feedback** button, and a Terminus catch **never presses it**; the toggle for
+   that is not shown on this project. If the page already shows a result, a
+   failing one is carried.
 
 Boxes still showing "No code provided" are left out. The JSON carries the same
 parts as `taskNotes`, `qualityPanel`, `oracleNop`, `summary`,

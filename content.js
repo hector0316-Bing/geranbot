@@ -1747,22 +1747,12 @@
     return { total, failed };
   }
 
-  async function readTerminus(options = {}) {
+  async function readTerminus() {
     const opened = await expandEverything();
 
-    // "Fast static checks" sits behind a Check feedback button like Geranium's,
-    // and the same toggle decides whether a catch presses it.
-    let checks = null;
-    let checksSkipped = null;
-    const fields = checkFields();
-    const unanswered = fields.filter((f) => !checkFinished(f));
-    if (options.runChecks === false) checksSkipped = 'turned off';
-    else if (!fields.length) checksSkipped = 'no checks on this page';
-    else if (!unanswered.length) checksSkipped = 'already answered';
-    else if (!unanswered.some((f) => checkRunButton(f))) checksSkipped = 'the buttons are disabled';
-    else checks = await runFeedbackChecks();
-    if (checks?.started) await expandEverything();
-
+    // "Fast static checks" sits behind a Check feedback button, but a catch
+    // never presses it here: the feedback worth having is what the submit
+    // already produced. A result someone else asked for is still read below.
     const notes = await readNotes();
     markLatest(notes);
     const autos = notes.filter((n) => AUTO_NOTE.test(n.title));
@@ -1810,7 +1800,6 @@
 
     const failedChecks = readCheckResults().filter((r) => !r.passed);
     if (failedChecks.length) content.failedStaticChecks = failedChecks;
-    if (checks?.waiting?.length) content.pendingChecks = checks.waiting;
 
     const uid = readUid();
     if (!uid && !notes.length && !Object.keys(found).length) {
@@ -1826,9 +1815,7 @@
         project: 'terminus',
         opened,
         notes: notes.length,
-        found: Object.keys(found),
-        checks,
-        checksSkipped
+        found: Object.keys(found)
       }
     };
   }
@@ -1846,7 +1833,7 @@
     stayAwake();
     try {
       if (project === 'rudder') return await readRudder();
-      if (project === 'terminus') return await readTerminus(options);
+      if (project === 'terminus') return await readTerminus();
       return await readPage(options);
     } finally {
       letSleep();
