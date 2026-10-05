@@ -738,6 +738,9 @@ catchBtn.addEventListener('click', async () => {
           : `\nAll ${qc.total} quality checks passed.`;
       }
       if (c.failedStaticChecks?.length) msg += `\n${c.failedStaticChecks.length} static check${c.failedStaticChecks.length === 1 ? '' : 's'} failed.`;
+      msg += meta.download
+        ? `\nScrolled to the "${meta.download}" button.`
+        : '\nNo download button found on the page.';
       if (mine()) {
         setStatus(msg, 'ok');
         refresh();
@@ -823,8 +826,8 @@ function applyRunState(res) {
   const p = res.progress;
   if (res.busy) {
     if (!running) setRunning(true);
-    showBusy(true, p ? `${p.phase} ${p.unit || 'criterion'} ${p.index} of ${p.total}…` : 'Working…');
-    if (p) setStatus(`${p.phase} ${p.index}/${p.total}…`);
+    showBusy(true, p ? (p.text || `${p.phase} ${p.unit || 'criterion'} ${p.index} of ${p.total}…`) : 'Working…');
+    if (p) setStatus(p.text || `${p.phase} ${p.index}/${p.total}…`);
   } else {
     if (running) setRunning(false);
     showBusy(false);
@@ -875,7 +878,9 @@ applyBtn.addEventListener('click', async () => {
         speed,
         entry: $('entry').value,
         gap: Number($('gap').value),
-        removeExtras: $('removeExtras').checked
+        removeExtras: $('removeExtras').checked,
+        mode: selectedMode(),
+        submitAfter: $('submitAfter').checked
       }
     });
 
@@ -915,6 +920,24 @@ applyBtn.addEventListener('click', async () => {
 
       clean = result.filled === result.requested
         && !result.skippedFields.length && !result.truncated.length;
+
+      const after = result.afterFill;
+      if (after) {
+        for (const c of after.checks) {
+          if (c.outcome !== 'answered') msg += `\n${c.name}: ${c.outcome}.`;
+        }
+        if (after.submitted) {
+          msg += '\nEvery check passed — Submit pressed.';
+        } else if (after.failed.length) {
+          const names = after.failed.map((f) => (f.name ? `${f.check} — ${f.name}` : f.check));
+          msg += `\n${after.failed.length} check${after.failed.length === 1 ? '' : 's'} failed, so nothing was submitted`
+            + ` (scrolled to the first):\n${names.join('\n')}`;
+          clean = false;
+        } else {
+          msg += `\nNot submitted: ${after.reason}.`;
+          clean = false;
+        }
+      }
     }
     if (sessionTabId === ranOn) setStatus(msg, clean ? 'ok' : '');
   } catch (e) {
@@ -1017,6 +1040,7 @@ function save() {
       project,
       tab: activeTabId(),
       removeExtras: $('removeExtras').checked,
+      submitAfter: $('submitAfter').checked,
       mode: selectedMode(),
       caught
     }
@@ -1046,6 +1070,7 @@ async function loadSession(tabId) {
   $('runChecks').checked = s.runChecks !== false;
   $('withGuidelines').checked = !!s.withGuidelines;
   $('removeExtras').checked = s.removeExtras !== false;
+  $('submitAfter').checked = s.submitAfter !== false;
   setMode(s.mode || null);
   $('modeHint').textContent = '';
   // Before the result is drawn: which project it is decides how it is read.
@@ -1082,6 +1107,7 @@ $('withGuidelines').addEventListener('change', () => {
 });
 $('entry').addEventListener('change', () => { save(); if (!running) setRunning(false); });
 $('removeExtras').addEventListener('change', save);
+$('submitAfter').addEventListener('change', save);
 
 async function refresh() {
   const asked = sessionTabId;

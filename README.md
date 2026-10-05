@@ -217,6 +217,30 @@ Close is excluded, so a confirmation is never dismissed the wrong way. If the
 page refuses to remove a section, the status line says how many were left rather
 than passing over it in silence.
 
+## Checking and submitting a Refinement
+
+On a Refinement page, once the last criterion is in, the run carries on:
+
+1. **Rubric Quality Check (Rapid In-App)** is asked again, and its answer
+   waited for. An answer already on the page was given about the criteria
+   before the fill, so it is cleared with **Clear feedback results** first
+   rather than trusted.
+2. **Name Check** is asked the same way, once the first has answered.
+3. **Every** check result on the page is then looked at, not only those two.
+   - All passing: **Submit** is pressed, and its "are you sure?" is answered
+     with Submit, Yes or Confirm (never Cancel).
+   - Any failing: nothing is submitted. The page is scrolled to the first
+     failing result, and the status line names each one that failed.
+
+Nothing is submitted either when one of the two checks is not on the page,
+never answers (three minutes, as on a catch), or has its button disabled; or
+when the fill itself was incomplete — a section short, a field missing, text
+cut to the field limit. The status line says which. **Stop** works throughout.
+
+**On Refinement, run Rubric Quality and Name Check, then submit if every check
+passes** on the Input tab (on by default) turns all of this off, leaving the run
+to end once the criteria are in, as Submission and Review always do.
+
 ## Two tabs
 
 The panel has a **Catch** tab and an **Input** tab. Each owns the full height, so
@@ -684,6 +708,11 @@ Boxes still showing "No code provided" are left out. The JSON carries the same
 parts as `taskNotes`, `qualityPanel`, `oracleNop`, `summary`,
 `qualityChecks: { total, failed: [{ section, text }] }` and
 `failedStaticChecks`.
+
+Once everything is read, the page is scrolled to the **download** button — the
+one naming a file or zip first, else any clickable that says "download" — and
+the status line names it, or says none was found. It is only scrolled to, never
+pressed.
 
 ## Notes on the page it drives
 

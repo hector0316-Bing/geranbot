@@ -568,6 +568,12 @@
   // with thumbs-up/down buttons at the foot that are not part of the answer.
   // One field can answer with several panels, one per sub-check.
   function readCheckResults() {
+    return checkPanels().map((p) => p.result);
+  }
+
+  // The same sweep, keeping each panel beside its reading so a failure can be
+  // scrolled to.
+  function checkPanels() {
     const out = [];
     const seen = new Set();
     for (const field of checkFields()) {
@@ -597,7 +603,7 @@
         if (name && name.toLowerCase() !== check.toLowerCase()) result.name = name;
         if (verdict) result.verdict = verdict.toUpperCase();
         if (text) result.text = text;
-        out.push(result);
+        out.push({ field, panel, result });
       }
     }
     return out;
@@ -637,26 +643,12 @@
     const started = pending.length;
     if (!started) return { started: 0, answered: 0, waiting: [] };
 
-    let left = pending;
+    let left;
     try {
       checkProgress = { phase: 'checks', index: 0, total: started };
-      const SLICE = 500;
-      let deadline = Date.now() + timeout;
-
-      while (left.length && Date.now() < deadline) {
-        checkCancelled();
-        const before = Date.now();
-        await wait(SLICE);
-        // A slice that took far longer than it asked for means the tab was
-        // suspended, not that the server was slow. Those minutes were never the
-        // server's to spend, so hand them back - otherwise a catch left alone in a
-        // background tab runs out of patience on checks it never actually waited
-        // for, and reads a page whose answers are still on their way.
-        const lost = Date.now() - before - SLICE;
-        if (lost > 2000) deadline += lost;
-        left = left.filter((p) => !checkFinished(p.field));
-        checkProgress = { phase: 'checks', index: started - left.length, total: started };
-      }
+      left = await awaitChecks(pending, timeout, (n) => {
+        checkProgress = { phase: 'checks', index: n, total: started };
+      });
     } finally {
       checkProgress = null;
     }
@@ -665,6 +657,154 @@
       answered: started - left.length,
       waiting: left.map((p) => p.label)
     };
+  }
+
+  // Wait for every pressed check to answer; hands back the ones that did not.
+  async function awaitChecks(pending, timeout, onAnswered) {
+    let left = pending;
+    const SLICE = 500;
+    let deadline = Date.now() + timeout;
+
+    while (left.length && Date.now() < deadline) {
+      checkCancelled();
+      const before = Date.now();
+      await wait(SLICE);
+      // A slice that took far longer than it asked for means the tab was
+      // suspended, not that the server was slow. Those minutes were never the
+      // server's to spend, so hand them back - otherwise a catch left alone in a
+      // background tab runs out of patience on checks it never actually waited
+      // for, and reads a page whose answers are still on their way.
+      const lost = Date.now() - before - SLICE;
+      if (lost > 2000) deadline += lost;
+      left = left.filter((p) => !checkFinished(p.field));
+      onAnswered?.(pending.length - left.length);
+    }
+    return left;
+  }
+
+  /* ---------- after a Refinement fill: two checks, then Submit ----------
+     Once the criteria are in, the rubric is judged afresh - Rubric Quality
+     Check (Rapid In-App) first, Name Check once it has answered - and then
+     every check on the page is looked at. All passing, Submit is pressed; any
+     failing, the page is scrolled to it and nothing is submitted. */
+
+  const SUBMIT_CHECKS = [
+    { name: 'Rubric Quality Check (Rapid In-App)', label: /rubric quality/i, prefer: /rapid/i },
+    { name: 'Name Check', label: /\bname check\b/i }
+  ];
+
+  function findCheckField(want) {
+    let found = checkFields().filter((f) => !f.closest(INSTANCE) && want.label.test(fieldLabel(f)));
+    if (want.prefer && found.some((f) => want.prefer.test(fieldLabel(f)))) {
+      found = found.filter((f) => want.prefer.test(fieldLabel(f)));
+    }
+    // A field nested in another is found twice; the inner one is the check.
+    return found.find((f) => !found.some((g) => g !== f && f.contains(g))) || null;
+  }
+
+  function clearButton(field) {
+    return Array.from(field.querySelectorAll('button'))
+      .find((b) => !b.disabled && /clear feedback/i.test(buttonText(b))) || null;
+  }
+
+  // Ask one check again and wait for its answer. An answer already showing was
+  // given about the criteria as they were before the fill, so it is cleared
+  // first rather than trusted.
+  async function rerunCheck(field, { timeout = 180000 } = {}) {
+    field.scrollIntoView({ block: 'center' });
+    await wait(settleMs);
+
+    if (checkFinished(field)) {
+      const clear = clearButton(field);
+      if (clear) {
+        clear.click();
+        await until(() => !checkFinished(field), { timeout: 10000 });
+        await wait(settleMs);
+      }
+      if (checkFinished(field)) return 'would not clear';
+    }
+
+    // The page can hold its buttons back for a moment while it saves the fill.
+    const btn = await until(() => checkRunButton(field), { timeout: 15000, step: 200 });
+    if (!btn) return 'button disabled';
+    checkCancelled();
+    btn.click();
+
+    const left = await awaitChecks([{ field }], timeout);
+    return left.length ? 'no answer' : 'answered';
+  }
+
+  function submitRank(t) {
+    if (DECLINE.test(t)) return 99;
+    if (/^submit$/i.test(t)) return 0;
+    if (/^submit\b/i.test(t)) return 1;
+    return 99;
+  }
+
+  function findSubmitButton() {
+    return Array.from(document.querySelectorAll('button'))
+      .filter((b) => isVisible(b) && !b.closest(INSTANCE) && !openDialog()?.contains(b))
+      .map((b) => ({ b, rank: submitRank(buttonText(b)) }))
+      .filter((x) => x.rank < 99)
+      .sort((a, b) => a.rank - b.rank)[0]?.b || null;
+  }
+
+  // A submit may ask "are you sure?"; its affirmative can read Submit as well.
+  function submitConfirmRank(t) {
+    const r = submitRank(t);
+    return r < 99 ? r : confirmRank(t);
+  }
+
+  async function checkAndSubmit({ fillClean }) {
+    const ran = [];
+    for (let i = 0; i < SUBMIT_CHECKS.length; i++) {
+      checkCancelled();
+      const want = SUBMIT_CHECKS[i];
+      progress = {
+        index: i + 1,
+        total: SUBMIT_CHECKS.length,
+        phase: 'checking',
+        unit: 'check',
+        text: `Waiting on ${want.name}…`
+      };
+      const field = findCheckField(want);
+      ran.push({ name: want.name, outcome: field ? await rerunCheck(field) : 'not on this page' });
+    }
+
+    // Every check on the page counts, not only the two just asked.
+    const failing = checkPanels().filter((p) => !p.result.passed);
+    const failed = failing.map((p) => ({
+      check: p.result.check,
+      ...(p.result.name ? { name: p.result.name } : {}),
+      verdict: p.result.verdict || 'FAIL'
+    }));
+    const unanswered = ran.filter((r) => r.outcome !== 'answered');
+
+    if (failing.length) {
+      failing[0].panel.scrollIntoView({ block: 'center' });
+      return { checks: ran, failed, submitted: false, reason: 'a check failed' };
+    }
+    if (unanswered.length) {
+      const where = unanswered.map((r) => findCheckField(SUBMIT_CHECKS.find((w) => w.name === r.name)))
+        .find(Boolean);
+      where?.scrollIntoView({ block: 'center' });
+      return { checks: ran, failed, submitted: false, reason: 'a check did not answer' };
+    }
+    if (!fillClean) {
+      return { checks: ran, failed, submitted: false, reason: 'the fill was incomplete' };
+    }
+
+    progress = { index: 1, total: 1, phase: 'submitting', unit: 'task', text: 'Every check passed — submitting…' };
+    const submit = findSubmitButton();
+    if (!submit) return { checks: ran, failed, submitted: false, reason: 'no Submit button found' };
+    submit.scrollIntoView({ block: 'center' });
+    await wait(settleMs);
+    if (submit.disabled) return { checks: ran, failed, submitted: false, reason: 'the Submit button is disabled' };
+    checkCancelled();
+    submit.click();
+    await wait(settleMs);
+    const confirmed = await confirmIfAsked(submitConfirmRank);
+    return { checks: ran, failed, submitted: true, confirmed };
   }
 
   /* ---------- form fields outside the criteria list ---------- */
@@ -1084,13 +1224,13 @@
 
   // Deleting a section puts up a confirmation. Nothing is removed until its
   // affirmative button is pressed, so press it.
-  async function confirmIfAsked() {
+  async function confirmIfAsked(rank = confirmRank) {
     const dialog = await until(openDialog, { timeout: 1500, step: 60 });
     if (!dialog) return false;
 
     const choice = Array.from(dialog.querySelectorAll('button'))
       .filter((b) => !b.disabled && isVisible(b))
-      .map((b) => ({ b, rank: confirmRank(buttonText(b)) }))
+      .map((b) => ({ b, rank: rank(buttonText(b)) }))
       .filter((x) => x.rank < 99)
       .sort((a, b) => a.rank - b.rank)[0];
 
@@ -1750,6 +1890,16 @@
     return { total, failed };
   }
 
+  // The zip's download button. Its wording is not fixed, so anything clickable
+  // that says "download" will do, one naming a file or zip first.
+  function findDownloadButton() {
+    const label = (el) => buttonText(el) || el.getAttribute('aria-label') || el.getAttribute('title') || '';
+    return Array.from(document.querySelectorAll('button, a, [role="button"]'))
+      .filter((el) => isVisible(el) && (/download/i.test(label(el)) || el.hasAttribute('download')))
+      .map((el) => ({ el, t: label(el), rank: /file|zip/i.test(label(el)) ? 0 : 1 }))
+      .sort((a, b) => a.rank - b.rank)[0] || null;
+  }
+
   async function readTerminus() {
     const opened = await expandEverything();
 
@@ -1812,13 +1962,20 @@
     const data = { project: 'terminus', stage };
     if (uid) data.uid = uid;
     data.content = content;
+
+    // Everything is read; leave the page at the download button, which is
+    // where the work goes next.
+    const download = findDownloadButton();
+    download?.el.scrollIntoView({ block: 'center' });
+
     return {
       data,
       meta: {
         project: 'terminus',
         opened,
         notes: notes.length,
-        found: Object.keys(found)
+        found: Object.keys(found),
+        download: download ? (download.t || 'download') : null
       }
     };
   }
@@ -2044,6 +2201,7 @@
     let added = 0;
     let filled = 0;
     let extrasLeft = 0; // sections the page would not delete
+    let afterFill = null; // the checks and Submit, on a Refinement page
 
     try {
       // The criteria list is unreachable while its section is collapsed.
@@ -2103,6 +2261,13 @@
         }
         filled++;
       }
+
+      const mode = options.mode || detectMode().mode;
+      if (mode === 'refinement' && options.submitAfter !== false) {
+        afterFill = await checkAndSubmit({
+          fillClean: filled === rows.length && !skippedFields.length && !truncated.length
+        });
+      }
     } finally {
       busy = false;
       progress = null;
@@ -2118,7 +2283,8 @@
       ranInBackground: hiddenDuringRun,
       extrasLeft,
       skippedFields,
-      truncated
+      truncated,
+      afterFill
     };
   }
 
