@@ -738,9 +738,11 @@ catchBtn.addEventListener('click', async () => {
           : `\nAll ${qc.total} quality checks passed.`;
       }
       if (c.failedStaticChecks?.length) msg += `\n${c.failedStaticChecks.length} static check${c.failedStaticChecks.length === 1 ? '' : 's'} failed.`;
-      msg += meta.download
-        ? `\nScrolled to the "${meta.download}" button.`
-        : '\nNo download button found on the page.';
+      msg += !meta.download
+        ? '\nNo download button found on the page.'
+        : meta.downloadField
+          ? `\nScrolled to "${meta.downloadField}".`
+          : `\nScrolled to the "${meta.download}" button.`;
       if (mine()) {
         setStatus(msg, 'ok');
         refresh();

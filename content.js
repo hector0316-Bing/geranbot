@@ -1912,19 +1912,40 @@
     return { says, words, archive: ARCHIVE.test(href) || /\.zip\b/i.test(words) };
   }
 
+  // The button that matters sits in its own field, "Download difficulty check
+  // results", reading "Download File". Earlier on the page the uploaded zip
+  // shows as a file chip that also says "download" and names a zip, and in page
+  // order it won - so the field comes first, the button's own wording next, and
+  // everything else only when neither is there.
+  const DOWNLOAD_FIELD = /^download\b/i;
+
   function findDownloadButton() {
     return Array.from(document.querySelectorAll('button, a, [role="button"]'))
       // Nested clickables would find the same control twice; keep the outer.
       .filter((el) => !el.parentElement?.closest('button, a, [role="button"]'))
       .map((el) => ({ el, ...downloadSignals(el) }))
       .filter((x) => x.says)
-      .map((x) => ({
-        el: x.el,
-        t: buttonText(x.el) || x.el.getAttribute('aria-label') || x.el.getAttribute('title') || 'download',
-        rank: (isVisible(x.el) ? 0 : 4) + (x.archive || /file|zip/i.test(x.words) ? 0 : 1)
-      }))
+      .map((x) => {
+        const field = x.el.closest('[data-testid^="field-"]');
+        const label = field ? fieldLabel(field) : '';
+        const text = buttonText(x.el);
+        let rank;
+        if (DOWNLOAD_FIELD.test(label)) rank = 0;
+        else if (/^download file$/i.test(text)) rank = 1;
+        else rank = 2 + (x.archive || /file|zip/i.test(x.words) ? 0 : 1);
+        if (!isVisible(x.el)) rank += 10;
+        return {
+          el: x.el,
+          // Scroll the whole field, so its heading shows above the button.
+          at: DOWNLOAD_FIELD.test(label) ? field : x.el,
+          t: text || x.el.getAttribute('aria-label') || x.el.getAttribute('title') || 'download',
+          field: DOWNLOAD_FIELD.test(label) ? label : null,
+          rank
+        };
+      })
       .sort((a, b) => a.rank - b.rank)[0] || null;
   }
+
 
   async function readTerminus() {
     const opened = await expandEverything();
@@ -1993,7 +2014,7 @@
     // where the work goes next.
     // The file list can render after the rest of the page, so give it a moment.
     const download = await until(findDownloadButton, { timeout: 4000, step: 200 });
-    download?.el.scrollIntoView({ block: 'center' });
+    download?.at.scrollIntoView({ block: 'center' });
 
     return {
       data,
@@ -2002,7 +2023,8 @@
         opened,
         notes: notes.length,
         found: Object.keys(found),
-        download: download ? (download.t || 'download') : null
+        download: download ? download.t : null,
+        downloadField: download?.field || null
       }
     };
   }
