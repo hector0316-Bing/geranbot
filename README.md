@@ -709,10 +709,13 @@ parts as `taskNotes`, `qualityPanel`, `oracleNop`, `summary`,
 `qualityChecks: { total, failed: [{ section, text }] }` and
 `failedStaticChecks`.
 
-Once everything is read, the page is scrolled to the **download** button — the
-one naming a file or zip first, else any clickable that says "download" — and
+Once everything is read, the page is scrolled to the **download** button, and
 the status line names it, or says none was found. It is only scrolled to, never
-pressed.
+pressed. The button is not always worded, so anything clickable counts that
+says "download" in its text, aria-label, title or testid, carries a download
+icon or a `download` attribute, or links to a `.zip` — such as a chip showing
+only the file's name. One naming a file or zip is preferred, and the button is
+given a few seconds to render if the file list comes in after the rest.
 
 ## Notes on the page it drives
 

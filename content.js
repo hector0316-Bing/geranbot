@@ -1890,13 +1890,39 @@
     return { total, failed };
   }
 
-  // The zip's download button. Its wording is not fixed, so anything clickable
-  // that says "download" will do, one naming a file or zip first.
+  // The zip's download button. It is not always worded: it can be an icon
+  // alone, or a chip that shows only the file's name and links to it. So every
+  // way an element can say "download" counts - its text, its aria-label or
+  // title, its testid, a download icon inside it, a `download` attribute, or a
+  // link to an archive - and one naming a file or zip is preferred.
+  const ARCHIVE = /\.(zip|tar|tgz|gz)(\?|#|$)/i;
+
+  function downloadSignals(el) {
+    const words = [
+      buttonText(el),
+      el.getAttribute('aria-label'),
+      el.getAttribute('title'),
+      el.getAttribute('data-testid')
+    ].filter(Boolean).join(' ');
+    const icon = Array.from(el.querySelectorAll('svg, i, [data-icon]'))
+      .some((i) => /download/i.test(`${i.getAttribute('class') || ''} ${i.getAttribute('data-icon') || ''} ${i.getAttribute('aria-label') || ''}`));
+    const href = el.getAttribute('href') || '';
+    const says = /download/i.test(words) || icon || el.hasAttribute('download')
+      || ARCHIVE.test(href) || /\/download\b/i.test(href);
+    return { says, words, archive: ARCHIVE.test(href) || /\.zip\b/i.test(words) };
+  }
+
   function findDownloadButton() {
-    const label = (el) => buttonText(el) || el.getAttribute('aria-label') || el.getAttribute('title') || '';
     return Array.from(document.querySelectorAll('button, a, [role="button"]'))
-      .filter((el) => isVisible(el) && (/download/i.test(label(el)) || el.hasAttribute('download')))
-      .map((el) => ({ el, t: label(el), rank: /file|zip/i.test(label(el)) ? 0 : 1 }))
+      // Nested clickables would find the same control twice; keep the outer.
+      .filter((el) => !el.parentElement?.closest('button, a, [role="button"]'))
+      .map((el) => ({ el, ...downloadSignals(el) }))
+      .filter((x) => x.says)
+      .map((x) => ({
+        el: x.el,
+        t: buttonText(x.el) || x.el.getAttribute('aria-label') || x.el.getAttribute('title') || 'download',
+        rank: (isVisible(x.el) ? 0 : 4) + (x.archive || /file|zip/i.test(x.words) ? 0 : 1)
+      }))
       .sort((a, b) => a.rank - b.rank)[0] || null;
   }
 
@@ -1965,7 +1991,8 @@
 
     // Everything is read; leave the page at the download button, which is
     // where the work goes next.
-    const download = findDownloadButton();
+    // The file list can render after the rest of the page, so give it a moment.
+    const download = await until(findDownloadButton, { timeout: 4000, step: 200 });
     download?.el.scrollIntoView({ block: 'center' });
 
     return {
