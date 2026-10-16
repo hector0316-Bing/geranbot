@@ -2,9 +2,10 @@
 
 Chrome extension (MV3) that runs in the browser's **side panel**. It reads a
 task page into one copyable block, and writes an answer back into it one field
-at a time, at a human pace. Three projects are handled: **Geranium**'s criteria
-and rubric pages, **Rudder**'s preference comparisons, and **Terminus-3rd**'s
-Terminal Bench 3.0 tasks, which are only read.
+at a time, at a human pace. Four projects are handled: **Geranium**'s criteria
+and rubric pages, **Rudder**'s preference comparisons, **Terminus-3rd**'s
+Terminal Bench 3.0 tasks, which are only read, and **Copperhead**'s asset and
+workflow validation reviews.
 
 ## Install
 
@@ -21,7 +22,7 @@ the page scrolls. Drag its inner edge to resize. Needs Chrome 116 or newer.
 Nothing runs until you open the panel — the page script is injected on demand
 under `activeTab`, so the extension has no access to any other site.
 
-## Three projects
+## Four projects
 
 Before anything else the panel asks which project the task belongs to, and the
 answer holds for that tab:
@@ -33,10 +34,14 @@ answer holds for that tab:
 - **Terminus-3rd** — Terminal Bench 3.0 tasks, uploaded as a zip. Only read
   from: there is nothing to type back in, so it has no Input tab.
   **Terminus-3rd tasks**, near the end, is about those.
+- **Copperhead** — Snorkel's asset and workflow validation: an application's
+  asset is downloaded, opened and reviewed, then the workflow around it.
+  **Copperhead tasks**, near the end, is about those.
 
 The page usually says which it is — Geranium by its criteria list or its "In
 this refinery / prompt generation project" blurb, Terminus by its feedback
-boxes, Rudder by its "Rating Assessment" and "Overall preference" sections or
+boxes, Copperhead by its task brief (Task ID beside the application used) or
+its "App and Asset Review" sections, Rudder by its "Rating Assessment" and "Overall preference" sections or
 its name in the heading — and whichever it looks like is marked **on this
 page** in the chooser, so the answer is normally a confirmation rather than a
 decision. The split document-review layout used to be taken as Rudder's, but
@@ -722,6 +727,69 @@ aria-label, title or testid, by a download icon or a `download` attribute, or by
 linking to a `.zip`. The button is given a few seconds to render if it comes in
 after the rest of the page.
 
+## Copperhead tasks
+
+A Copperhead (Snorkel) task is an asset and workflow validation review: the
+task brief on the left, and on the right a form of sections — App and Asset
+Review (Download, Realism, Complexity, Commercial value, Verdict), then the
+Workflow sections, then Complete Your Submission. It sits in the same layout
+as Rudder and its form is answered the same way, so the two share one engine.
+
+Only **Submission** has been seen. The page heading is read as the stage —
+Submission, **Review** or **Adjudication** — and shown on the badge and at the
+top of the block; Review and Adjudication are read the same way until a sample
+shows what they carry of their own.
+
+### What a catch takes
+
+1. The **stage**, the **Task ID**, and **Last saved at** from the top of the
+   page, with the UID in its own box as on every project.
+2. The **task brief** — each heading in the left panel and what sits under it:
+   Task ID, Application(s) Used, App download link, Workflow, Professional
+   Domain, Persona, Trigger, Outcome. A link keeps its address.
+3. **Uploads** — the asset zip and the screenshot zip, each with the time it
+   went up when the page shows one.
+4. **Task notes**, automated feedback and reviewer feedback alike, newest
+   first. They are read from the notes sidebar as on Rudder and from note
+   accordions as on Geranium, so either layout is caught; a note seen in both
+   is kept once.
+5. Every **section** and under it every question: its key, its wording and
+   guidance, its options, and what is answered now. A section that has not
+   appeared yet — everything after Download stays shut until both download
+   answers are Yes — is listed and marked as not open yet.
+
+The **Answers** box holds the answers as JSON, every key the page asks for in
+the order it asks, which **Send answers to input** drops into the input box.
+
+### Writing answers back
+
+| the page asks for | write | for example |
+|---|---|---|
+| one choice | its wording, or the part before the full stop | `"Yes"`, `"Mostly"`, `"Accept with reservations"` |
+| several choices | the labels to tick, as a list | `["Content, labels, or naming"]` |
+| a dropdown | the option's wording | `"Both App and Asset and Workflow Sections Completed"` |
+| a number | the number | `6.5`, `45` |
+| text | the text | `"The association accountant…"` |
+
+Keys are the field names a catch gives (`boolean-were_you_able_to_…`), or a
+question's own wording. The wording is how a **follow-up** is answered: a
+question that only appears for one choice — *Who would use or own this
+asset?* after Commercial value is Yes — is not on the page at catch time, so
+it has no key yet. Answers are written in the order given, so put a follow-up
+after the answer that brings it in; it is waited for when its turn comes, and
+the section it lands in is opened. Two questions share the wording *What gave
+this asset away…* — one written, one ticked — and a list goes to the one that
+ticks.
+
+Ticking is stated in full, as on Rudder: every label named is put on and every
+other one taken off. Uploads are never written to; they are left to you.
+
+**Delay** replaces Gap on this project: after each answer the run waits that
+long before going on — **5 s** by default, with 2, 3, 4, 6 and 7 s to choose
+from. Text is **typed per key** by default rather than pasted, at the Pace
+chosen, and a choice or a tick gets a beat before it is clicked. **Stop** works
+throughout, and the status line names anything it could not write.
+
 ## Notes on the page it drives
 
 - **Collapsed sections are expanded first.** Radix unmounts closed accordion
@@ -748,7 +816,37 @@ after the rest of the page.
   takes raster icons, so [tools/make-icons.mjs](tools/make-icons.mjs) renders it
   to `icons/icon{16,32,48,128}.png`. Edit the SVG, then re-run:
   `node <browser-automation>/browser.mjs about:blank --script tools/make-icons.mjs`
-- [content.js](content.js) — page side, all three projects: read fields, fill
-  values, add/delete sections on Geranium, choose ratings and tick flags on
-  Rudder, read the feedback on Terminus-3rd
-- [panel.html](panel.html) / [panel.css](panel.css) / [panel.js](panel.js) — the side panel UI
+- [panel.html](panel.html) / [panel.css](panel.css) — the side panel's markup and styles
+
+Each project has a file of its own on both sides, so a project is changed — or
+a new one added — without touching the others.
+
+**Page side** — [content/](content/). Injected on demand, in this order, as
+classic scripts sharing one global scope:
+
+| file | holds |
+|---|---|
+| [core.js](content/core.js) | shared: timing and staying awake behind, Stop, task notes, the Check feedback buttons, reading a field, typing and pasting, accordions, dialogs, and the `PAGE_PROJECTS` registry |
+| [form.js](content/form.js) | the form engine Rudder and Copperhead share: choices, ticks, written answers, and `applyForm` |
+| [geranium.js](content/geranium.js) | Geranium: the criteria list, page type, checks on a catch, the fill, and the Refinement check-and-submit |
+| [rudder.js](content/rudder.js) | Rudder: the documents, the rating form, and its fill |
+| [terminus.js](content/terminus.js) | Terminus-3rd: the feedback boxes, the failed quality checks, and the download button |
+| [copperhead.js](content/copperhead.js) | Copperhead: the task brief, uploads, notes, the review form, and its fill |
+| [main.js](content/main.js) | which project a page is, and the messages from the panel, looked up in `PAGE_PROJECTS` |
+
+**Panel side** — [panel/](panel/). Loaded by panel.html in this order:
+
+| file | holds |
+|---|---|
+| [core.js](panel/core.js) | shared: the `PROJECTS` registry and what a project registers, rendering one form question, the fill message Rudder and Copperhead share |
+| [geranium.js](panel/geranium.js) | Geranium's wording, Content block, page-type radios, catch and fill messages, badge and settings |
+| [rudder.js](panel/rudder.js) | Rudder's, with the guidelines toggle |
+| [terminus.js](panel/terminus.js) | Terminus-3rd's — read only, so no fill |
+| [copperhead.js](panel/copperhead.js) | Copperhead's, with the Delay setting |
+| [main.js](panel/main.js) | the panel itself: tabs, the project chooser, Catch and Type, the per-tab session — it names no project |
+
+To add a project: a `content/<name>.js` that registers a reader (and a filler,
+if it has one) in `PAGE_PROJECTS`, a `panel/<name>.js` that registers its
+wording and messages in `PROJECTS`, both files added to the load lists
+(`PAGE_SCRIPTS` in panel/main.js, the script tags in panel.html, and
+`DETECT_ORDER` in content/main.js), and a card in the chooser in panel.html.

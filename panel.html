@@ -47,6 +47,12 @@
           Catches the task notes, the judge panel, Oracle / NOP, the summary
           and the quality checks that did not pass.</span>
       </button>
+      <button class="pick-card" type="button" data-project="copperhead">
+        <span class="pick-name">Copperhead</span>
+        <span class="pick-note">Snorkel asset and workflow validation — Submission
+          (Review and Adjudication to come). Catches the task brief, IDs, uploads
+          and notes, and types the review answers back in.</span>
+      </button>
     </div>
 
     <p id="pickHint" class="hint"></p>
@@ -63,7 +69,7 @@
       <p id="modeHint" class="hint"></p>
     </div>
 
-    <label class="check not-rudder not-terminus">
+    <label class="check not-rudder not-terminus not-copperhead">
       <input type="checkbox" id="runChecks" checked>
       Run the feedback checks first
     </label>
@@ -127,7 +133,7 @@
         <pre class="part-body" id="contentValue"></pre>
       </div>
 
-      <div class="part only-rudder" id="answersPart" role="button" tabindex="0"
+      <div class="part" id="answersPart" role="button" tabindex="0"
            title="Click to copy the answers">
         <div class="part-head">
           <span>Answers</span>
@@ -173,7 +179,18 @@
           <option value="90">Unhurried</option>
         </select>
       </label>
-      <label>
+      <label class="only-copperhead">
+        Delay
+        <select id="delay" title="Pause after each answer before going on to the next">
+          <option value="2000">2s</option>
+          <option value="3000">3s</option>
+          <option value="4000">4s</option>
+          <option value="5000" selected>5s</option>
+          <option value="6000">6s</option>
+          <option value="7000">7s</option>
+        </select>
+      </label>
+      <label class="not-copperhead">
         Gap
         <select id="gap" title="Pause after each field, and how much room every other step in the run is given">
           <option value="500">0.5s</option>
@@ -200,6 +217,14 @@
       flags take a list of their labels.
     </p>
 
+    <p class="hint only-copperhead">
+      Answered in the order written, waiting the Delay after each one. A choice
+      takes its wording or the part before the full stop (<code>"Yes"</code>,
+      <code>"Mostly"</code>), a multi-choice a list, a number or text its value.
+      A question that only appears after an earlier answer can be named by its
+      wording; put it after the answer that brings it in.
+    </p>
+
     <button id="apply" class="primary">Type into page</button>
   </section>
 
@@ -217,5 +242,11 @@
 
   <input type="file" id="file" accept=".json,application/json" hidden>
 </body>
-<script src="panel.js"></script>
+<!-- Shared first, then one file per project, then the panel itself. -->
+<script src="panel/core.js"></script>
+<script src="panel/geranium.js"></script>
+<script src="panel/rudder.js"></script>
+<script src="panel/terminus.js"></script>
+<script src="panel/copperhead.js"></script>
+<script src="panel/main.js"></script>
 </html>

@@ -523,7 +523,11 @@ body[data-project="rudder"] .only-geranium,
 body[data-project="terminus"] .only-geranium,
 body[data-project="terminus"] .only-rudder,
 body[data-project="rudder"] .not-rudder,
-body[data-project="terminus"] .not-terminus { display: none !important; }
+body[data-project="terminus"] .not-terminus,
+body[data-project="copperhead"] .only-geranium,
+body[data-project="copperhead"] .only-rudder,
+body[data-project="copperhead"] .not-copperhead,
+body:not([data-project="copperhead"]) .only-copperhead { display: none !important; }
 
 .hint code {
   padding: 0 3px;
