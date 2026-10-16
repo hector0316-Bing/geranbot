@@ -6,6 +6,70 @@
 
    Needs panel/core.js. */
 
+function chNoteBody(n) {
+  const asks = (n.asks || []).map((a) => `[${a.answer ? 'x' : ' '}] ${a.question}`).join('\n');
+  return [n.text, asks].filter(Boolean).join('\n\n');
+}
+
+const CH_KIND_NAME = {
+  choice: 'pick one',
+  flags: 'tick any that apply',
+  select: 'pick from the list',
+  number: 'a number',
+  text: 'written answer'
+};
+
+// One question: its key and wording, what it asks, its options, and what is
+// answered now. The guidance under a Copperhead question is a line or two,
+// so it is kept in full.
+function chRenderQuestion(f) {
+  const out = [`[${f.key}]  ${f.label}  (${CH_KIND_NAME[f.kind] || f.kind})`];
+  if (f.guidelines) out.push(f.guidelines);
+  else if (f.question && f.question !== f.label) out.push(`Q: ${f.question}`);
+
+  if (f.kind === 'choice' || f.kind === 'select') {
+    if (f.options?.length) {
+      out.push('Options:');
+      for (const o of f.options) out.push(`  - ${o.text}`);
+    }
+    out.push(f.answer ? `Answer: ${f.answer}` : 'Answer: (not answered)');
+  } else if (f.kind === 'flags') {
+    const on = f.answer || [];
+    for (const o of f.options || []) out.push(`  [${on.includes(o.text) ? 'x' : ' '}] ${o.text}`);
+    if (!on.length) out.push('Answer: (none ticked)');
+  } else if (f.answer === null || f.answer === undefined || f.answer === '') {
+    out.push('Answer: (empty)');
+  } else {
+    out.push(`Answer:\n${f.answer}`);
+  }
+  return out.join('\n');
+}
+
+// After a fill: how many were answered, and anything the page would not take
+// or that was left for the reviewer.
+function copperheadApplyStatus(result) {
+  let msg = `Answered ${result.filled} of ${result.requested} question`
+    + `${result.requested === 1 ? '' : 's'}.`;
+  if (result.ranInBackground) {
+    msg += '\nPart of this ran while the tab was behind, which Chrome slows down.';
+  }
+  // A question the page does not ask is worth saying out loud: usually its
+  // wording differs from the page's, or it belongs to another task.
+  if (result.skippedFields.length) {
+    msg += `\nNot on this page: ${result.skippedFields.join(', ')}`;
+  }
+  if (result.refused.length) msg += `\nWould not take: ${result.refused.join('\n')}`;
+  if (result.unknownFlags.length) msg += `\nNo such option — ${result.unknownFlags.join('\n')}`;
+  if (result.truncated.length) msg += `\nCut to the field limit: ${result.truncated.join(', ')}`;
+  if (result.leftToYou?.length) {
+    msg += `\nLeft for you to tick yourself: ${result.leftToYou.join(', ')}`;
+  }
+
+  const clean = result.filled === result.requested && !result.skippedFields.length
+    && !result.refused.length && !result.unknownFlags.length && !result.truncated.length;
+  return { msg, clean };
+}
+
 /* ---------- the caught Copperhead task ----------
    The brief as the left panel gives it, the IDs and times that say which task
    and which save this is, the notes, then the form question by question. */
@@ -37,7 +101,7 @@ function renderCopperhead(c) {
   if (c.taskNotes?.length) {
     const notes = [...c.taskNotes].sort((a, b) => (b.latest ? 1 : 0) - (a.latest ? 1 : 0));
     part('Task notes', notes
-      .map((n) => `[${n.title}${n.time ? ` — ${n.time}` : ''}${n.latest ? ', newest' : ''}]\n${noteBody(n)}`)
+      .map((n) => `[${n.title}${n.time ? ` — ${n.time}` : ''}${n.latest ? ', newest' : ''}]\n${chNoteBody(n)}`)
       .join('\n\n'));
   }
 
@@ -49,8 +113,7 @@ function renderCopperhead(c) {
       out.push('(Not open yet — it appears once the questions before it are answered.)\n');
       continue;
     }
-    // The guidance here is a line or two per question, worth having in full.
-    for (const f of sec.fields) out.push(renderQuestion(f, true) + '\n');
+    for (const f of sec.fields) out.push(chRenderQuestion(f) + '\n');
   }
 
   return out.join('\n').trim();
@@ -66,8 +129,8 @@ function copperheadCatchStatus(data, meta) {
   if (meta.notes) bits.push(`${meta.notes} task note${meta.notes === 1 ? '' : 's'}`);
   let msg = `Caught ${bits.join(', ')}${c.taskId ? ` for ${c.taskId}` : ''}.`;
   msg += meta.answered
-    ? `\n${meta.answered} of ${meta.fields} already answered — those are in the Answers box.`
-    : '\nNothing answered yet, so the Answers box is a blank template.';
+    ? `\n${meta.answered} of ${meta.fields} already answered.`
+    : '\nNothing answered yet.';
   if (meta.waiting) {
     msg += `\n${meta.waiting} section${meta.waiting === 1 ? ' is' : 's are'} not open yet — `
       + 'they appear once the questions before them are answered.';
@@ -98,13 +161,14 @@ put a follow-up question after the answer that brings it in.`,
   entry: 'type',
 
   render: (data) => renderCopperhead(data.content || {}),
-  answers: (data) => data.answers || null,
+  // No Answers box: every answer is already in the Content block. The JSON
+  // still carries them, for Send answers to input.
   toInputText: (data) => answersJson(data.answers),
 
   catchStatus: copperheadCatchStatus,
   // Delay stands in for Gap here: the wait after each answer.
   applyOptions: () => ({ gap: Number($('delay').value) }),
-  applyStatus: formApplyStatus,
+  applyStatus: copperheadApplyStatus,
   badge(res) {
     const ch = res.copperhead;
     return ch

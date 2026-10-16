@@ -6,6 +6,47 @@
 
    Needs panel/core.js. */
 
+function noteBody(n) {
+  const asks = (n.asks || []).map((a) => `[${a.answer ? 'x' : ' '}] ${a.question}`).join('\n');
+  return [n.text, asks].filter(Boolean).join('\n\n');
+}
+
+/* ---------- one question ----------
+   The key, the wording, the options, and whatever is answered now. */
+
+const KIND_NAME = {
+  choice: 'pick one',
+  flags: 'tick any that apply',
+  text: 'written answer',
+  value: 'value'
+};
+
+function renderQuestion(f, withGuidelines) {
+  const out = [`[${f.key}]  ${f.label}  (${KIND_NAME[f.kind] || f.kind})`];
+  if (f.question && f.question !== f.label) out.push(`Q: ${f.question}`);
+  // The guidance behind a rating runs to a page or more, so it is included only
+  // when it was asked for.
+  if (withGuidelines && f.guidelines) out.push(f.guidelines);
+
+  if (f.kind === 'choice') {
+    out.push('Options:');
+    for (const o of f.options || []) out.push(`  ${o.value} = ${o.text}`);
+    out.push(f.answer === null || f.answer === undefined
+      ? 'Answer: (not answered)'
+      : `Answer: ${f.answer}${f.answerText ? ` — ${f.answerText}` : ''}`);
+  } else if (f.kind === 'flags') {
+    const on = f.answer || [];
+    out.push('Flags:');
+    for (const o of f.options || []) out.push(`  [${on.includes(o.text) ? 'x' : ' '}] ${o.text}`);
+    if (!on.length) out.push('Answer: (none ticked)');
+  } else if (f.answer === null || f.answer === undefined || f.answer === '') {
+    out.push('Answer: (empty)');
+  } else {
+    out.push(`Answer:\n${f.answer}`);
+  }
+  return out.join('\n');
+}
+
 /* ---------- the caught Rudder task ----------
    One block holding everything the task says: what it is waiting on, the
    conversation, both responses, and every question with its options and
@@ -70,6 +111,28 @@ function rudderCatchStatus(data, meta) {
   return { msg, kind: 'ok' };
 }
 
+// After a fill: how many were answered, and anything the
+// page would not take.
+function rudderApplyStatus(result) {
+  let msg = `Answered ${result.filled} of ${result.requested} question`
+    + `${result.requested === 1 ? '' : 's'}.`;
+  if (result.ranInBackground) {
+    msg += '\nPart of this ran while the tab was behind, which Chrome slows down.';
+  }
+  // A key the page does not ask for is worth saying out loud: it usually
+  // means the answer was written against a different task.
+  if (result.skippedFields.length) {
+    msg += `\nNot on this page: ${result.skippedFields.join(', ')}`;
+  }
+  if (result.refused.length) msg += `\nWould not take: ${result.refused.join('\n')}`;
+  if (result.unknownFlags.length) msg += `\nNo such flag — ${result.unknownFlags.join('\n')}`;
+  if (result.truncated.length) msg += `\nCut to the field limit: ${result.truncated.join(', ')}`;
+
+  const clean = result.filled === result.requested && !result.skippedFields.length
+    && !result.refused.length && !result.unknownFlags.length && !result.truncated.length;
+  return { msg, clean };
+}
+
 /* ---------- registration ---------- */
 
 PROJECTS.rudder = {
@@ -100,7 +163,7 @@ with whatever is already answered on it.`,
   toInputText: (data) => answersJson(data.answers),
 
   catchStatus: rudderCatchStatus,
-  applyStatus: formApplyStatus,
+  applyStatus: rudderApplyStatus,
   badge(res) {
     $('stageHint').textContent = 'The task, its notes and any answers already on it.';
     return res.rudderFields

@@ -145,15 +145,32 @@ once. Whatever is already in a field is cleared first.
   does, with a beat before the next field. This is the fast, ordinary way to
   work through a form.
 - **Type per key** — one character at a time, with `keydown` / `beforeinput` /
-  `input` / `keyup` per keystroke and variable gaps (longer after punctuation,
-  shorter mid-word, the occasional pause). Slower, but the page sees a genuine
-  typing rhythm.
+  `input` / `keyup` per keystroke, typed the way a person types (below).
+  Slower, but the page sees a genuine typing rhythm.
 
 Either way the page's own validation, character counter and autosave fire
 exactly as they do for a person.
 
-**Pace** sets the keystroke rhythm when typing — Fast, **Human (default)**,
-Careful or Unhurried.
+**Typing like a person.** Nobody types at an even rate, so the typing does
+not either:
+
+- **Rhythm** — letters inside a word run together, a space is a beat longer, a
+  comma is a short stop and the end of a sentence a longer one.
+- **Thinking** — a moment to read the question before the first key, and now
+  and then a hesitation of a second or two before the next word.
+- **Typos, corrected** — about 3 letters in 100 slip: a key beside the one
+  meant on a QWERTY keyboard, or a letter struck twice. The slip is often seen
+  only a key or two later; then there is a pause, Backspace back over it, and
+  the right letters are typed. Numbers and answers under 12 characters are
+  typed carefully, without slips.
+
+However the typing goes, the field ends up holding exactly the text asked for.
+At the Human pace a typical answer comes out at about 45–55 words a minute.
+
+**Pace** sets how fast the hand is — the typical time between two keys —
+and every pause above scales with it: Fast (120 ms), **Human (200 ms,
+default)**, Careful (280 ms) or Unhurried (360 ms). It also sets the beat
+before a choice is clicked or a field is pasted into.
 
 **Gap** sets how long it waits after each field before moving to the next —
 0.5s, 1s, **2s (default)**, 3s, 4s or 5s — so the page has time to validate,
@@ -732,8 +749,10 @@ after the rest of the page.
 A Copperhead (Snorkel) task is an asset and workflow validation review: the
 task brief on the left, and on the right a form of sections — App and Asset
 Review (Download, Realism, Complexity, Commercial value, Verdict), then the
-Workflow sections, then Complete Your Submission. It sits in the same layout
-as Rudder and its form is answered the same way, so the two share one engine.
+Workflow sections, then Complete Your Submission. Its reading and its filling
+are its own, in [content/copperhead.js](content/copperhead.js) and
+[panel/copperhead.js](panel/copperhead.js): nothing in them is shared with
+Rudder, so a change for one project never moves the other.
 
 Only **Submission** has been seen. The page heading is read as the stage —
 Submission, **Review** or **Adjudication** — and shown on the badge and at the
@@ -750,16 +769,20 @@ shows what they carry of their own.
 3. **Uploads** — the asset zip and the screenshot zip, each with the time it
    went up when the page shows one.
 4. **Task notes**, automated feedback and reviewer feedback alike, newest
-   first. They are read from the notes sidebar as on Rudder and from note
-   accordions as on Geranium, so either layout is caught; a note seen in both
-   is kept once.
+   first. They are read from the notes sidebar and from note accordions in the
+   page, so either layout is caught; a note seen in both is kept once.
 5. Every **section** and under it every question: its key, its wording and
    guidance, its options, and what is answered now. A section that has not
    appeared yet — everything after Download stays shut until both download
    answers are Yes — is listed and marked as not open yet.
 
-The **Answers** box holds the answers as JSON, every key the page asks for in
-the order it asks, which **Send answers to input** drops into the input box.
+There is no separate Answers box on this project: every answer is already in
+the Content block. The JSON still carries them, and **Send answers to input**
+writes them into the input box as a template — every key the page asks for,
+in the order it asks.
+
+The "without AI assistance" confirmation in Complete Your Submission is not
+caught at all.
 
 ### Writing answers back
 
@@ -781,8 +804,29 @@ the section it lands in is opened. Two questions share the wording *What gave
 this asset away…* — one written, one ticked — and a list goes to the one that
 ticks.
 
-Ticking is stated in full, as on Rudder: every label named is put on and every
-other one taken off. Uploads are never written to; they are left to you.
+**Wording is matched loosely**, because the page's own wording is easy to get
+slightly wrong. Arrows, dashes, punctuation and case are ignored, and the two
+spellings of *judgement* are one, so these all find their question or option:
+
+| written | on the page |
+|---|---|
+| `Trigger -> Outcome Alignment` | Trigger → Outcome Alignment |
+| `Realism Score (1-10)` | Realism Score (1–10) |
+| `Judgment-based` | Judgement Based |
+
+A wording that is still a word or so off — *How long did this review task take
+(minutes)?* for *How long did this review take (minutes)?* — finds its question
+when it shares at least three quarters of its words with it and no other
+question comes as close. Anything that finds nothing is named in the status
+line under *Not on this page*, never skipped in silence.
+
+Ticking is stated in full: every label named is put on and every other one
+taken off. Uploads are never written to; they are left to you.
+
+**The "without AI assistance" confirmation is never ticked.** It is the
+reviewer's own statement about how the task was done, so it is left for you to
+tick by hand, and only if it is true. A catch leaves it out, and an answer
+for it is passed over, with *Left for you to tick yourself* in the status line.
 
 **Delay** replaces Gap on this project: after each answer the run waits that
 long before going on — **5 s** by default, with 2, 3, 4, 6 and 7 s to choose
@@ -803,8 +847,9 @@ throughout, and the status line names anything it could not write.
   `value` setter, which desyncs React's value tracker so the `input` event that
   follows counts as a real edit.
 - **A half-typed number is not assigned.** `<input type=number>` rejects a lone
-  `"-"`, so for negative weights the keystroke is dispatched but the value lands
-  on the following digit — same end state, no console warnings.
+  `"-"` and warns about a trailing `"6."`, so for a negative weight or a
+  decimal such as 6.5 the keystroke is dispatched but the value lands on the
+  following digit — same end state, no console warnings.
 
 ## Files
 
@@ -827,18 +872,17 @@ classic scripts sharing one global scope:
 | file | holds |
 |---|---|
 | [core.js](content/core.js) | shared: timing and staying awake behind, Stop, task notes, the Check feedback buttons, reading a field, typing and pasting, accordions, dialogs, and the `PAGE_PROJECTS` registry |
-| [form.js](content/form.js) | the form engine Rudder and Copperhead share: choices, ticks, written answers, and `applyForm` |
 | [geranium.js](content/geranium.js) | Geranium: the criteria list, page type, checks on a catch, the fill, and the Refinement check-and-submit |
-| [rudder.js](content/rudder.js) | Rudder: the documents, the rating form, and its fill |
+| [rudder.js](content/rudder.js) | Rudder: the documents, the rating form, choosing ratings and ticking flags, and its fill |
 | [terminus.js](content/terminus.js) | Terminus-3rd: the feedback boxes, the failed quality checks, and the download button |
-| [copperhead.js](content/copperhead.js) | Copperhead: the task brief, uploads, notes, the review form, and its fill |
+| [copperhead.js](content/copperhead.js) | Copperhead: the task brief, uploads, notes, the review form, loose wording, and its fill |
 | [main.js](content/main.js) | which project a page is, and the messages from the panel, looked up in `PAGE_PROJECTS` |
 
 **Panel side** — [panel/](panel/). Loaded by panel.html in this order:
 
 | file | holds |
 |---|---|
-| [core.js](panel/core.js) | shared: the `PROJECTS` registry and what a project registers, rendering one form question, the fill message Rudder and Copperhead share |
+| [core.js](panel/core.js) | shared: the `PROJECTS` registry and what a project registers, the catch timestamp, the Answers JSON |
 | [geranium.js](panel/geranium.js) | Geranium's wording, Content block, page-type radios, catch and fill messages, badge and settings |
 | [rudder.js](panel/rudder.js) | Rudder's, with the guidelines toggle |
 | [terminus.js](panel/terminus.js) | Terminus-3rd's — read only, so no fill |

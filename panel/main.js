@@ -23,7 +23,6 @@ const catching = new Set(); // tabs with a catch still under way
 // project, then the messaging that looks the projects up.
 const PAGE_SCRIPTS = [
   'content/core.js',
-  'content/form.js',
   'content/geranium.js',
   'content/rudder.js',
   'content/terminus.js',
@@ -575,7 +574,10 @@ async function loadSession(tabId) {
   const s = bag[stateKey()] || {};
 
   editor.value = s.json || '';
-  $('speed').value = s.speed || '22';
+  // A Pace saved before the values changed matches no option, and an
+  // unmatched select reads as nothing - no delay at all - so fall back to Human.
+  $('speed').value = s.speed || '200';
+  if (!$('speed').value) $('speed').value = '200';
   $('entry').value = s.entry || 'paste';
   $('gap').value = s.gap || '2000';
   for (const p of Object.values(PROJECTS)) p.loadState?.(s);

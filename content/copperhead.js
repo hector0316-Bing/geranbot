@@ -1,21 +1,257 @@
 /* Criteria Catcher - page side: Copperhead.
 
-   A Copperhead (Snorkel) task sits in the same document-review layout as
-   Rudder: the task brief on the left - Task ID, the application, its download
-   link, the workflow, domain, persona, trigger and outcome, each under an h3 -
-   and a form of sections on the right. The form is answered with the same
-   clicks and keystrokes as Rudder's, so it runs on the same engine.
+   A Copperhead (Snorkel) task is an asset and workflow validation review. The
+   task brief is on the left - Task ID, the application, its download link,
+   the workflow, domain, persona, trigger and outcome, each under an h3 - and
+   the review form on the right, in sections: App and Asset Review, the
+   Workflow sections, and Complete Your Submission.
 
    Much of the form only exists once an earlier answer asks for it: the
    sections after "Download" appear when both download questions are Yes, and
    several explanations appear only for one particular choice. Those are
    waited for as the answers bring them in.
 
+   Questions are found by their key or by their wording, and the wording is
+   matched loosely - the page writes "Trigger → Outcome Alignment",
+   "Realism Score (1–10)" and "Judgement Based", and an answer written with
+   "->", "(1-10)" or "Judgment-based" means the same question and option.
+
+   The confirmation that the task was done without AI assistance is neither
+   caught nor ticked here. It is the reviewer's own statement, so it is left
+   for them.
+
    Only Submission has been seen. Review and Adjudication are recorded as
    their own stage and read the same way until a sample shows what they
-   carry of their own. */
+   carry of their own.
 
-/* Needs core.js and form.js. */
+   Needs core.js. */
+
+/* ---------- the fields ---------- */
+
+// "field-boolean-were_you_able_to_…" -> "boolean-were_you_able_to_…"
+function chKey(fieldEl) {
+  return (fieldEl.getAttribute('data-testid') || '').replace(/^field-/, '') || null;
+}
+
+function chFieldList(root = document) {
+  return Array.from(root.querySelectorAll(FIELD)).filter((f) => chKey(f));
+}
+
+// A choice is a radio button beside a hidden input holding the stored value
+// ("true" for Yes), inside a label carrying the wording on screen.
+function chRadioOptions(fieldEl) {
+  return Array.from(fieldEl.querySelectorAll('input[type="radio"]'))
+    .filter((input) => input.closest(FIELD) === fieldEl)
+    .map((input) => {
+      const label = input.closest('label');
+      const btn = (label || input.parentElement)?.querySelector('button[role="radio"]') || null;
+      return {
+        value: input.value,
+        text: oneLine(label?.innerText || label?.textContent || '') || input.value,
+        checked: input.checked || btn?.getAttribute('aria-checked') === 'true',
+        input,
+        label,
+        btn
+      };
+    });
+}
+
+// A field's description: the first line says what is asked ("Does this
+// reflect how the workflow actually happens?"), the rest how to answer it.
+function chDescribe(fieldEl) {
+  const desc = Array.from(fieldEl.querySelectorAll('[class*="_description_"]'))
+    .find((d) => d.closest(FIELD) === fieldEl);
+  const full = blockText(desc);
+  if (!full) return { question: null, guidelines: null };
+  const first = full.split('\n').map((l) => l.trim()).find(Boolean) || null;
+  return { question: first, guidelines: full };
+}
+
+// A field is named by its label; one without falls back to its description.
+function chLabel(fieldEl) {
+  const lab = fieldLabel(fieldEl);
+  if (lab) return lab;
+  const { question } = chDescribe(fieldEl);
+  return question ? question.replace(/[:.]\s*$/, '') : chKey(fieldEl);
+}
+
+function chSectionIntro(sec) {
+  const desc = Array.from(sec.querySelectorAll('[class*="_description_"]'))
+    .find((d) => !d.closest(FIELD));
+  return blockText(desc) || null;
+}
+
+function chIsAnswered(answer) {
+  if (Array.isArray(answer)) return answer.length > 0;
+  return answer !== null && answer !== undefined && answer !== '';
+}
+
+/* ---------- matching wording loosely ---------- */
+
+// Wording reduced to its words: arrows read as "to", every kind of dash and
+// punctuation dropped, case ignored, and the two spellings of judgement made
+// one. "Trigger → Outcome Alignment" and "trigger -> outcome alignment" come
+// out the same, as do "Realism Score (1–10)" and "Realism Score (1-10)".
+function chLoose(s) {
+  return oneLine(s).toLowerCase()
+    .replace(/->|→|⟶|⇒|=>/g, ' to ')
+    .replace(/judgement/g, 'judgment')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+// How alike two wordings are, by the words they share: 1 is the same words.
+function chLikeness(a, b) {
+  const x = new Set(chLoose(a).split(' ').filter(Boolean));
+  const y = new Set(chLoose(b).split(' ').filter(Boolean));
+  if (!x.size || !y.size) return 0;
+  let shared = 0;
+  for (const w of x) if (y.has(w)) shared++;
+  return shared / (x.size + y.size - shared);
+}
+
+/* ---------- writing the answers back ---------- */
+
+// Yes and No are stored as true and false.
+const CH_SAME_AS = new Map([
+  ['yes', 'true'], ['true', 'yes'],
+  ['no', 'false'], ['false', 'no']
+]);
+
+// The part of an option a person would say: "Mostly" for "Mostly. A few
+// details are off, but the asset holds together."
+function chOptionHead(text) {
+  return chLoose(String(text).split(/[:.]/)[0]);
+}
+
+function chMatchOption(options, value) {
+  const want = norm(value);
+  if (!want) return null;
+  const tries = [want, CH_SAME_AS.get(want)].filter(Boolean);
+
+  // Strictest reading first, then the loose ones: the stored value, the
+  // wording, the part before the full stop, and the start of the wording.
+  for (const reading of [
+    (o, w) => norm(o.value) === w,
+    (o, w) => norm(o.text) === w,
+    (o, w) => chLoose(o.text) === chLoose(w),
+    (o, w) => chOptionHead(o.text) === chLoose(w),
+    (o, w) => chLoose(w).length >= 4 && chLoose(o.text).startsWith(chLoose(w))
+  ]) {
+    for (const w of tries) {
+      const hit = options.find((o) => reading(o, w));
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
+// A box is named by its wording, loosely; a shortened name is allowed as long
+// as it is long enough to mean only one of them.
+function chSameFlag(wanted, optionText) {
+  const a = chLoose(wanted);
+  const b = chLoose(optionText);
+  return a === b || (a.length >= 8 && b.startsWith(a));
+}
+
+function chFlagList(value) {
+  if (value === null || value === undefined || value === false) return [];
+  if (Array.isArray(value)) return value.map(String).filter((v) => v.trim());
+  const one = String(value).trim();
+  return one && !/^(none|no flags)$/i.test(one) ? [one] : [];
+}
+
+// A choice re-renders the moment it is made, so what the click did is read
+// back off the page rather than off the node that was clicked.
+async function chSetChoice(fieldEl, value, base) {
+  const options = chRadioOptions(fieldEl);
+  if (!options.length) return { ok: false, why: 'no options to choose from' };
+
+  const pick = chMatchOption(options, value);
+  if (!pick) return { ok: false, why: `no option matching "${oneLine(value)}"` };
+
+  const chosen = () => chRadioOptions(fieldEl).some((o) => o.checked && o.value === pick.value);
+  if (chosen()) return { ok: true, already: true };
+
+  const target = pick.btn || pick.label;
+  if (!target) return { ok: false, why: 'the option has nothing to click' };
+  target.scrollIntoView({ block: 'center' });
+  await wait(base * 6); // a beat to look at it before choosing, as a person would
+  target.click();
+  if (await until(chosen, { timeout: 2000 })) return { ok: true };
+
+  // The label answers to a click as well; try that before giving up.
+  pick.label?.click();
+  return await until(chosen, { timeout: 1500 })
+    ? { ok: true }
+    : { ok: false, why: 'the page did not take the choice' };
+}
+
+// Ticking is stated in full: every flag named is put on and every other one
+// is taken off, so the page ends up saying exactly what the answer says.
+async function chSetFlags(fieldEl, value, base) {
+  const options = chFlagOptions;
+  const wanted = chFlagList(value);
+  const names = options(fieldEl).map((o) => o.text);
+  if (!names.length) return { ok: false, why: 'no boxes to tick' };
+
+  const unknown = wanted.filter((w) => !names.some((n) => chSameFlag(w, n)));
+  let stuck = 0;
+
+  for (const name of names) {
+    checkCancelled();
+    const on = wanted.some((w) => chSameFlag(w, name));
+    const now = options(fieldEl).find((o) => o.text === name);
+    if (!now || now.checked === on) continue;
+
+    now.box.scrollIntoView({ block: 'center' });
+    await wait(base * 6);
+    now.box.click();
+    const settled = await until(
+      () => options(fieldEl).find((o) => o.text === name)?.checked === on,
+      { timeout: 1500 }
+    );
+    if (!settled) stuck++;
+  }
+
+  return {
+    ok: !stuck,
+    unknown,
+    why: stuck ? `${stuck} box${stuck === 1 ? '' : 'es'} would not tick` : null
+  };
+}
+
+// Answers are written as { "field key": answer }, which is the shape the
+// caught template hands out. An { "answers": { … } } wrapper and a list of
+// { key, answer } rows are both read as the same thing.
+//
+// What comes back is a list of [key, answer] pairs in the order given. A list
+// of rows is kept as a list, not folded into an object: two questions can share
+// a wording - Copperhead's "What gave this asset away…" is asked once to be
+// written and once to be ticked - and an object would keep only the second.
+function chNormalizeAnswers(input) {
+  let data = input;
+  if (typeof data === 'string') data = JSON.parse(data);
+  if (data && !Array.isArray(data) && data.answers && typeof data.answers === 'object') data = data.answers;
+
+  if (Array.isArray(data)) {
+    const out = data
+      .filter((row) => row && typeof row === 'object' && row.key)
+      .map((row) => [String(row.key), row.answer ?? row.value ?? null]);
+    if (!out.length) throw new Error('No answers found - each row needs a "key".');
+    return out;
+  }
+  if (!data || typeof data !== 'object') {
+    throw new Error('JSON must be an object of answers, keyed by field name.');
+  }
+  if (Array.isArray(data.criteria)) {
+    throw new Error('That is a Geranium criteria list. Switch the project to Geranium to use it.');
+  }
+  return Object.entries(data);
+}
+
+/* ---------- the page ---------- */
 
 const COPPERHEAD_SECTION = '[data-testid^="section-App and Asset Review"], '
   + '[data-testid^="section-Workflow - "], [data-testid^="section-Workflows - "]';
@@ -45,11 +281,17 @@ function own(fieldEl, selector) {
 
 // Five shapes: a single choice (radios), several (checkboxes), a dropdown,
 // a number and written text. Uploads are reported, never written to.
+// The box confirming the task was done without AI assistance. Ticking it is
+// the reviewer's own statement, so it is neither caught nor answered.
+const CH_CONFIRMATION = /\bwithout\s+(?:any\s+)?(?:ai|llms?|large language models?)\b|\bai\s+assistance\b/i;
+
 function chKind(fieldEl) {
   if (/s3fileuploader/i.test(fieldEl.getAttribute('data-testid') || '')
     || own(fieldEl, '[data-testid="s3-uploaded-file"], input[type="file"]').length) return 'file';
   if (own(fieldEl, '[role="radiogroup"], input[type="radio"]').length) return 'choice';
-  if (own(fieldEl, '[role="checkbox"], input[type="checkbox"]').length) return 'flags';
+  if (own(fieldEl, '[role="checkbox"], input[type="checkbox"]').length) {
+    return CH_CONFIRMATION.test(blockText(fieldEl)) ? 'confirmation' : 'flags';
+  }
   if (own(fieldEl, 'select, [role="combobox"], button[aria-haspopup="listbox"]').length) return 'select';
   if (own(fieldEl, 'textarea').length) return 'text';
   if (own(fieldEl, 'input[type="number"], input[inputmode="numeric"], input[inputmode="decimal"]').length) return 'number';
@@ -104,7 +346,7 @@ async function setSelect(fieldEl, value, base) {
   const native = own(fieldEl, 'select')[0];
   if (native) {
     const options = Array.from(native.options).map((o) => ({ value: o.value, text: oneLine(o.textContent), o }));
-    const pick = matchOption(options, value);
+    const pick = chMatchOption(options, value);
     if (!pick) return { ok: false, why: `no option matching "${oneLine(value)}"` };
     native.scrollIntoView({ block: 'center' });
     await wait(base * 6);
@@ -126,7 +368,7 @@ async function setSelect(fieldEl, value, base) {
     text: oneLine(el.textContent),
     el
   }));
-  const pick = matchOption(options, value);
+  const pick = chMatchOption(options, value);
   if (!pick) {
     trigger.click(); // close it again rather than leave it hanging open
     return { ok: false, why: `no option matching "${oneLine(value)}"` };
@@ -138,18 +380,20 @@ async function setSelect(fieldEl, value, base) {
 }
 
 function readChField(fieldEl) {
-  const key = formKey(fieldEl);
+  const key = chKey(fieldEl);
   if (!key) return null;
   const kind = chKind(fieldEl);
-  if (kind === 'file' || kind === 'other') return null;
+  // Uploads are not answers, and the "without AI assistance" confirmation is
+  // the reviewer's own to make - neither is carried off the page.
+  if (kind === 'file' || kind === 'other' || kind === 'confirmation') return null;
 
-  const { question, guidelines } = describeField(fieldEl);
-  const out = { key, label: formLabel(fieldEl), kind };
+  const { question, guidelines } = chDescribe(fieldEl);
+  const out = { key, label: chLabel(fieldEl), kind };
   if (question) out.question = question;
   if (guidelines && guidelines !== question) out.guidelines = guidelines;
 
   if (kind === 'choice') {
-    const opts = radioOptions(fieldEl);
+    const opts = chRadioOptions(fieldEl);
     out.options = opts.map((o) => ({ value: o.value, text: o.text }));
     const picked = opts.find((o) => o.checked);
     // The wording on screen, not the stored value: "Mostly. A few details…"
@@ -172,7 +416,7 @@ function readChField(fieldEl) {
 }
 
 function chFields(root = document) {
-  return formFields(root);
+  return chFieldList(root);
 }
 
 function readChSections() {
@@ -181,7 +425,7 @@ function readChSections() {
     const name = oneLine((sec.getAttribute('data-testid') || '').replace(/^section-/, ''));
     const fields = chFields(sec).map(readChField).filter(Boolean);
     const block = { name: name || 'Section', fields };
-    const intro = sectionIntro(sec);
+    const intro = chSectionIntro(sec);
     if (intro) block.intro = intro;
     // A section still shut behind an earlier answer is listed anyway, so the
     // reader can see what is yet to come.
@@ -235,8 +479,9 @@ function readUploads() {
   }).filter((f) => f.name);
 }
 
-// Notes can arrive in the sidebar, as on Rudder, or as accordions in the page,
-// as on Geranium; both are read and a note seen twice is kept once.
+// Notes - automated feedback and reviewer feedback - can sit in the notes
+// sidebar or in accordions in the page; both are read, and a note seen twice
+// is kept once.
 async function readChNotes() {
   const seen = new Set();
   const out = [];
@@ -270,7 +515,7 @@ async function readCopperhead() {
   for (const sec of sections) {
     for (const f of sec.fields) {
       answers[f.key] = f.answer === undefined ? null : f.answer;
-      if (isAnswered(f.answer)) answered++;
+      if (chIsAnswered(f.answer)) answered++;
     }
   }
 
@@ -310,36 +555,138 @@ async function readCopperhead() {
   };
 }
 
-// A key is the field's own name; a question's wording works as well, which is
-// how a follow-up that was not on the page at catch time can be answered. Two
-// questions can share a wording - one written, one ticked - so a list goes to
-// the one that ticks.
-function findChField(key, value) {
-  const want = String(key);
-  const fields = chFields();
-  const byKey = fields.find((f) => formKey(f) === want);
-  if (byKey) return byKey;
-  const byLabel = fields.filter((f) => norm(formLabel(f)) === norm(want) && chKind(f) !== 'file');
-  if (byLabel.length < 2) return byLabel[0] || null;
-  const ticks = Array.isArray(value);
-  return byLabel.find((f) => (chKind(f) === 'flags') === ticks) || byLabel[0];
+// The wordings a field answers to: its label, and the question beneath it.
+function chWordings(fieldEl) {
+  return [chLabel(fieldEl), chDescribe(fieldEl).question].filter(Boolean);
 }
 
-const COPPERHEAD_FORM = {
-  project: 'copperhead',
-  name: 'Copperhead',
-  isPage: () => isCopperheadPage(),
-  find: findChField,
-  kind: chKind,
-  flags: chFlagOptions,
-  control: chControl,
-  // A follow-up can take a moment to mount, and a whole section only appears
-  // once both download answers are Yes.
-  patience: 4000
-};
+const CH_CLOSE_ENOUGH = 0.75; // share of words two wordings must have in common
 
+// A key is the field's own name ("boolean-were_you_able_to_…"). A question's
+// wording works as well, which is how a follow-up that was not on the page at
+// catch time is answered - and it is compared loosely, so "->" finds "→",
+// "(1-10)" finds "(1–10)", and a wording a word or so off still finds its
+// question when no other comes as close. Two questions can share a wording -
+// one written, one ticked - so a list goes to the one that ticks.
+function findChField(key, value) {
+  const fields = chFields().filter((f) => !['file', 'other'].includes(chKind(f)));
+  const want = String(key);
+
+  const byKey = fields.find((f) => chKey(f) === want);
+  if (byKey) return byKey;
+
+  const loose = chLoose(want);
+  let hits = fields.filter((f) => chWordings(f).some((w) => chLoose(w) === loose));
+  if (!hits.length) {
+    const scored = fields
+      .map((f) => ({ f, s: Math.max(...chWordings(f).map((w) => chLikeness(w, want))) }))
+      .filter((x) => x.s >= CH_CLOSE_ENOUGH)
+      .sort((a, b) => b.s - a.s);
+    hits = scored.filter((x) => x.s === scored[0]?.s).map((x) => x.f);
+  }
+  if (hits.length < 2) return hits[0] || null;
+  const ticks = Array.isArray(value);
+  return hits.find((f) => (chKind(f) === 'flags') === ticks) || hits[0];
+}
+
+// Answers are written in the order given, one question at a time, with the
+// Delay after each. A question an earlier answer brings in is waited for;
+// anything that cannot be written is named rather than passed over.
 async function applyCopperhead(input, options = {}) {
-  return applyForm(input, options, COPPERHEAD_FORM);
+  if (busy) throw new Error('Already typing. Press Stop first.');
+
+  // A key left empty is a question deliberately not being answered, so only
+  // what the answer actually says is written to the page.
+  const rows = chNormalizeAnswers(input)
+    .filter(([, v]) => v !== null && v !== undefined && v !== '');
+  if (!rows.length) throw new Error('No answers to write - every field was left empty.');
+  if (!isCopperheadPage()) throw new Error('This does not look like a Copperhead task page.');
+
+  const base = Math.max(0, Number(options.speed ?? 200));
+  const paste = options.entry === 'paste'; // typing is the default here
+  const gap = Math.max(0, Number(options.gap ?? 5000));
+  hiddenDuringRun = false;
+  busy = true;
+  cancelled = false;
+  stayAwake();
+  progress = { index: 0, total: rows.length, phase: 'starting', unit: 'answer' };
+
+  const skippedFields = [];
+  const truncated = [];
+  const refused = [];
+  const unknownFlags = [];
+  const leftToYou = [];
+  let filled = 0;
+
+  try {
+    progress = { index: 0, total: rows.length, phase: 'opening', unit: 'answer' };
+    await expandEverything();
+
+    for (let i = 0; i < rows.length; i++) {
+      checkCancelled();
+      const [key, value] = rows[i];
+      progress = { index: i + 1, total: rows.length, phase: 'filling', unit: 'answer' };
+      if (document.hidden) hiddenDuringRun = true;
+
+      // A follow-up mounts a moment after the answer that asks for it, and a
+      // whole section appears only once both download answers are Yes - shut,
+      // so it is opened and given a few seconds more.
+      let fieldEl = await until(() => findChField(key, value), { timeout: 1200, step: 100 });
+      if (!fieldEl) {
+        await expandEverything();
+        fieldEl = await until(() => findChField(key, value), { timeout: 4000, step: 150 });
+      }
+      if (!fieldEl) { skippedFields.push(key); continue; }
+
+      const kind = chKind(fieldEl);
+      if (kind === 'confirmation') {
+        // The reviewer's own statement: never ticked on their behalf.
+        leftToYou.push(chLabel(fieldEl) || key);
+        continue;
+      }
+      if (kind === 'choice') {
+        const r = await chSetChoice(fieldEl, value, base);
+        if (r.ok) filled++; else refused.push(`"${key}" - ${r.why}`);
+      } else if (kind === 'flags') {
+        // A lone box answered true or false is ticked or not.
+        const ticks = typeof value === 'boolean'
+          ? (value ? chFlagOptions(fieldEl).map((o) => o.text) : [])
+          : value;
+        const r = await chSetFlags(fieldEl, ticks, base);
+        if (r.unknown?.length) unknownFlags.push(`"${key}": ${r.unknown.join('; ')}`);
+        if (r.ok) filled++; else refused.push(`"${key}" - ${r.why}`);
+      } else if (kind === 'select') {
+        const r = await setSelect(fieldEl, value, base);
+        if (r.ok) filled++; else refused.push(`"${key}" - ${r.why}`);
+      } else {
+        const ctl = chControl(fieldEl);
+        if (!ctl) { skippedFields.push(key); continue; }
+        const r = paste
+          ? await pasteInto(ctl, value, base)
+          : await typeInto(ctl, value, base);
+        if (r.truncated) truncated.push(`"${key}"`);
+        filled++;
+      }
+
+      await pause(gap); // the Delay, before the next answer
+    }
+  } finally {
+    busy = false;
+    progress = null;
+    letSleep();
+  }
+
+  return {
+    project: 'copperhead',
+    requested: rows.length,
+    filled,
+    ranInBackground: hiddenDuringRun,
+    skippedFields,
+    truncated,
+    refused,
+    unknownFlags,
+    leftToYou
+  };
 }
 
 /* ---------- registration ---------- */
@@ -350,7 +697,7 @@ PAGE_PROJECTS.copperhead = {
   apply: applyCopperhead,
   ping: () => ({
     copperhead: isCopperheadPage()
-      ? { stage: copperheadStage(), fields: chFields().filter((f) => !['file', 'other'].includes(chKind(f))).length }
+      ? { stage: copperheadStage(), fields: chFields().filter((f) => !['file', 'other', 'confirmation'].includes(chKind(f))).length }
       : null
   })
 };

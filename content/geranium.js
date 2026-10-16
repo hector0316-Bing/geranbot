@@ -821,7 +821,7 @@ async function apply(input, options = {}) {
   const rows = normalize(input).map(normalizeRow);
   if (!getContainer()) throw new Error('No criteria container found on this page.');
 
-  const base = Math.max(0, Number(options.speed ?? 22));
+  const base = Math.max(0, Number(options.speed ?? 200));
   const paste = options.entry !== 'type'; // paste per field unless asked to type
   hiddenDuringRun = false;
   const gap = Math.max(0, Number(options.gap ?? 2000)); // pause after each field

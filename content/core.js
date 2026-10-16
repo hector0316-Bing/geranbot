@@ -479,14 +479,83 @@ function nativeSet(ctl, str) {
   if (setter) setter.call(ctl, str); else ctl.value = str;
 }
 
-// Vary the gap between keys so the page sees a rhythm rather than a metronome:
-// longer after punctuation, a little longer at spaces, and the odd pause.
-function keyDelay(base, ch) {
-  let d = base * (0.6 + Math.random() * 0.9);
-  if (/[.,;:!?]/.test(ch)) d += base * 2.2;
-  else if (ch === ' ') d += base * 0.35;
-  if (Math.random() < 0.02) d += base * 6;
+/* ---------- typing like a person ----------
+   Nobody types at an even rate. Letters inside a word run together quickly,
+   a space is a beat longer, a sentence ends and the next one is thought about,
+   and now and then the next word is hesitated over. Fingers slip too: a key
+   beside the one meant, or a letter struck twice - and the slip is usually
+   seen a key or two later, deleted, and typed again.
+
+   `base` is the Pace setting: the typical time between two keys, in ms. Every
+   pause below is a multiple of it, so a slower Pace slows the whole hand.
+   Whatever happens on the way, the field ends up holding exactly the text
+   asked for. */
+
+const rand = (lo, hi) => lo + Math.random() * (hi - lo);
+
+const TYPO_RATE = 0.03;      // slips per letter typed
+const NOTICE_LATE = 0.6;     // a slip seen only after more keys have gone in
+const THINK_RATE = 0.05;     // hesitating before a word
+
+// The keys around each one on a QWERTY keyboard, where a finger lands when it
+// misses.
+const NEIGHBOURS = {
+  q: 'wa', w: 'qeas', e: 'wrds', r: 'etdf', t: 'ryfg', y: 'tugh', u: 'yihj', i: 'uojk', o: 'ipkl', p: 'ol',
+  a: 'qwsz', s: 'awedxz', d: 'serfcx', f: 'drtgvc', g: 'ftyhbv', h: 'gyujnb', j: 'huikmn', k: 'jiolm', l: 'kop',
+  z: 'asx', x: 'zsdc', c: 'xdfv', v: 'cfgb', b: 'vghn', n: 'bhjm', m: 'njk'
+};
+
+// What a slipping finger types in place of `ch`: a neighbouring key, kept in
+// the same case, or the letter struck twice. Null where there is no slip to
+// make - digits and punctuation are typed with more care.
+function slipFor(ch) {
+  const near = NEIGHBOURS[ch.toLowerCase()];
+  if (!near) return null;
+  if (Math.random() < 0.2) return ch + ch;
+  const k = near[Math.floor(Math.random() * near.length)];
+  return ch === ch.toLowerCase() ? k : k.toUpperCase();
+}
+
+// The gap after a key: quick inside a word, a beat longer at a space, a real
+// stop after a sentence, a shorter one after a comma.
+function keyDelay(base, ch, prev) {
+  let d = base * rand(0.55, 1.35);
+  if (/\w/.test(ch) && /\w/.test(prev || '')) d *= 0.85;
+  if (ch === ' ') d += base * rand(0.2, 0.6);
+  if (/[.!?]/.test(ch)) d += base * rand(3, 8);
+  else if (/[,;:]/.test(ch)) d += base * rand(1, 2.5);
   return Math.max(1, Math.round(d));
+}
+
+// One key: down, the edit it makes, up. The edit is skipped where the value
+// would not be assignable - a number input refuses a half-typed "-", "6." or
+// "1e" - and lands with the next key instead, as in a real field.
+function pressKey(ctl, buf, ch, numeric) {
+  ctl.dispatchEvent(new KeyboardEvent('keydown', { key: ch, bubbles: true }));
+  const next = buf + ch;
+  if (!numeric || (Number.isFinite(Number(next)) && !/[.eE+-]$/.test(next))) {
+    ctl.dispatchEvent(new InputEvent('beforeinput', {
+      bubbles: true, cancelable: true, inputType: 'insertText', data: ch
+    }));
+    nativeSet(ctl, next);
+    try { ctl.setSelectionRange(next.length, next.length); } catch { /* number inputs */ }
+    ctl.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: ch }));
+  }
+  ctl.dispatchEvent(new KeyboardEvent('keyup', { key: ch, bubbles: true }));
+  return next;
+}
+
+function pressBackspace(ctl, buf) {
+  ctl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }));
+  const next = buf.slice(0, -1);
+  ctl.dispatchEvent(new InputEvent('beforeinput', {
+    bubbles: true, cancelable: true, inputType: 'deleteContentBackward', data: null
+  }));
+  nativeSet(ctl, next);
+  try { ctl.setSelectionRange(next.length, next.length); } catch { /* number inputs */ }
+  ctl.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward', data: null }));
+  ctl.dispatchEvent(new KeyboardEvent('keyup', { key: 'Backspace', bubbles: true }));
+  return next;
 }
 
 async function typeInto(ctl, value, base) {
@@ -497,38 +566,73 @@ async function typeInto(ctl, value, base) {
   ctl.scrollIntoView({ block: 'center' });
   ctl.focus({ preventScroll: true });
   await wait(base);
-
   await clearField(ctl, base);
+  // A moment to read the question before the first key.
+  await pause(base * rand(2, 6));
 
   // Track the intended text in a buffer rather than reading back ctl.value:
   // a number input sanitises a partial "-" to "", which would eat the sign.
+  // Numbers and short answers are typed carefully, without slips.
   const numeric = ctl.type === 'number';
+  const slips = !numeric && target.length >= 12;
+  const chars = Array.from(target);
   let buf = '';
-  for (const ch of target) {
-    checkCancelled();
-    ctl.dispatchEvent(new KeyboardEvent('keydown', { key: ch, bubbles: true }));
-    buf += ch;
+  let corrections = 0;
 
-    // A half-typed number ("-", "1e") is not assignable; the keystroke still
-    // happens, the value just lands on the next character, as in a real field.
-    if (!numeric || Number.isFinite(Number(buf))) {
-      ctl.dispatchEvent(new InputEvent('beforeinput', {
-        bubbles: true, cancelable: true, inputType: 'insertText', data: ch
-      }));
-      nativeSet(ctl, buf);
-      try { ctl.setSelectionRange(buf.length, buf.length); } catch { /* number inputs */ }
-      ctl.dispatchEvent(new InputEvent('input', {
-        bubbles: true, inputType: 'insertText', data: ch
-      }));
+  for (let i = 0; i < chars.length; i++) {
+    checkCancelled();
+    const ch = chars[i];
+    const prev = chars[i - 1];
+
+    // Hesitating over the next word, now and then.
+    if (prev === ' ' && /\w/.test(ch) && Math.random() < THINK_RATE) {
+      await pause(base * rand(4, 12));
     }
 
-    ctl.dispatchEvent(new KeyboardEvent('keyup', { key: ch, bubbles: true }));
-    await wait(keyDelay(base, ch));
+    const slip = slips && Math.random() < TYPO_RATE ? slipFor(ch) : null;
+    if (!slip) {
+      buf = pressKey(ctl, buf, ch, numeric);
+      await wait(keyDelay(base, ch, prev));
+      continue;
+    }
+
+    // The slip goes in, and maybe a few right keys after it before it is seen.
+    for (const k of slip) {
+      buf = pressKey(ctl, buf, k, numeric);
+      await wait(keyDelay(base, k, prev));
+    }
+    let carried = 0;
+    if (Math.random() < NOTICE_LATE) {
+      const more = Math.floor(rand(1, 4));
+      while (carried < more && i + 1 + carried < chars.length && chars[i + 1 + carried] !== '\n') {
+        const k = chars[i + 1 + carried];
+        buf = pressKey(ctl, buf, k, numeric);
+        await wait(keyDelay(base, k, chars[i + carried]));
+        carried++;
+      }
+    }
+
+    // Seen: a pause, back over everything since the slip, a breath, and on.
+    await pause(base * rand(1.5, 4));
+    for (let n = slip.length + carried; n > 0; n--) {
+      checkCancelled();
+      buf = pressBackspace(ctl, buf);
+      await wait(Math.round(base * rand(0.35, 0.7)));
+    }
+    await wait(Math.round(base * rand(0.8, 1.8)));
+    corrections++;
+    i--; // type the intended key now
+  }
+
+  // The field must hold exactly what was asked for, however the typing went.
+  if (!numeric && ctl.value !== target) {
+    nativeSet(ctl, target);
+    ctl.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: null }));
   }
 
   ctl.dispatchEvent(new Event('change', { bubbles: true }));
   ctl.blur();
-  return { typed: target.length, truncated: target.length < text.length };
+  return { typed: target.length, truncated: target.length < text.length, corrections };
 }
 
 // Clear the field the way selecting-all and deleting would.
