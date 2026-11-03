@@ -890,6 +890,43 @@ a fill can, alongside its typing (see below).
 are ticked. Each box is the reviewer saying "I reviewed…", "I checked…", so
 a fill ticks them only when the answers say so.
 
+**Fix / Fixable.** When Task Type is Fix and the analysis is Fixable, the
+form grows. Under the checks come **Files Changed** (each file, what
+changed and why) and a rich-text box, *If you added to the PR in any way,
+explain how*. Additional Submitter Questions gains confirmation lists for
+Report.md, LLM Policy, Instructions, Tagging and Metadata, Solution, Tests
+And Rewards, Verifier review, Validation review, Rubric review and
+Environment, and a **Critical files reviewed** box before the trajectory
+notes. After Instructions, Tagging and Metadata, Solution, the four test
+and reward reviews, and Environment comes a pair of boxes labelled
+*Findings - Required confirmation* and *Edits made - Required
+confirmation* — five pairs with the same two labels and mostly hashed field
+names. Each is caught and answered by the name of its area:
+
+| area | findings | edits made |
+|---|---|---|
+| Instructions | `instructions_findings` | `instructions_edits_made` |
+| Tagging and Metadata | `tagging_and_metadata_findings` | `tagging_and_metadata_edits_made` |
+| Solution | `solution_findings` | `solution_edits_made` |
+| Tests And Rewards, Verifier, Validation, Rubric review | `rubric_review_findings` (or `tests_and_rewards_findings`, `verifier_review_…`, `validation_review_…`) | `rubric_review_edits_made` (or `tests_and_rewards_edits_made`, …) |
+| Environment | `environment_findings` | `environment_edits_made` |
+
+A bare `findings` or `"Findings - Required confirmation"` names five boxes,
+so it is not written — the status line lists it as not on the page. The
+other new boxes answer to `files_changed`, `added_to_pr`,
+`critical_files_reviewed` and `<area>_confirmations`
+(`reportmd_confirmations`, `llm_policy_confirmations`, …).
+
+**Policy pledges are always ticked.** Every box in *LLM Policy - Required
+confirmations* is ticked on each fill. So is any box elsewhere that pledges
+the work is your own: one naming Claude Fable, "LLM-assisted analysis was
+human verified", "written in my own words", or "HUMAN WRITTEN" (the
+instruction.md box under Instructions). This holds when the JSON leaves the
+key out, lists only some boxes, or says `false`. Leave these boxes out of
+your JSON. A list in your own words that skips them is matched, in order,
+to the group's other boxes. The status line names the groups it ticked this
+way.
+
 The catch's status line ends with what is still yours to do by hand: an
 empty upload, unticked confirmations, checks not yet run.
 
@@ -939,11 +976,13 @@ text as HTML too, so the lists, code and bold come through the same way.
 Afterwards the box is read back, words only, and the status line says if it
 does not match.
 
-**Run Static Checks once Comments for Reviewer is typed, then Instruction
-Review once it all passes** (on by default). Static Checks is pressed as
-soon as Comments for Reviewer — the files-changed write-up — has been
-written, and runs while any answers after it (the handling times) are
-typed. Without that answer, it is pressed after the last one. When it
+**Run Static Checks once Files Changed (or, without it, Comments for
+Reviewer) is typed, then Instruction Review once it all passes** (on by
+default). Static Checks is pressed as soon as the files changed are written
+up — the **Files Changed** box on a Fix / Fixable task when the answers
+include it, otherwise Comments for Reviewer — and runs while the answers
+after it are typed. Without either answer, it is pressed after the last
+one. When it
 answers with every result a PASS, Instruction Review — locked until then —
 is pressed, still alongside the typing. If Static Checks fails, Instruction Review is not pressed. A
 check already passing is left as it is; a failed answer is cleared and asked

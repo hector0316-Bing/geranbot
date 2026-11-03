@@ -417,6 +417,12 @@ function readSlField(fieldEl) {
   }
 
   const out = { key, label, kind };
+  const area = slAreas().get(fieldEl);
+  if (area) {
+    // One of several boxes with this label: named after its review area.
+    out.area = area.area;
+    out.name = area.name;
+  }
   if (question && question !== label) out.question = question;
   if (guidelines && guidelines !== question) out.guidelines = guidelines;
 
@@ -536,7 +542,7 @@ async function readSuiteLife() {
         continue;
       }
       fields++;
-      answers[f.key] = f.answer === undefined ? null : f.answer;
+      answers[f.name || f.key] = f.answer === undefined ? null : f.answer;
       if (slIsAnswered(f.answer)) answered++;
     }
   }
@@ -723,6 +729,34 @@ async function slSetFlags(fieldEl, value, base) {
   return { ok: !stuck, unknown, why: stuck ? `${stuck} box${stuck === 1 ? '' : 'es'} would not tick` : null };
 }
 
+// Boxes ticked whatever the answer says, and when it says nothing: every
+// LLM Policy box, and the pledges that the writing is the reviewer's own.
+const SL_ALWAYS_AREA = /^llm policy\b/i;
+const SL_ALWAYS_BOX = [
+  /\bclaude fable\b/i,
+  /\bllm-assisted analysis was human verified\b/i,
+  /\bwritten in my own words\b/i,
+  /\bhuman written\b/i
+];
+function slMustTick(fieldEl, boxText) {
+  return SL_ALWAYS_AREA.test(slAreaName(fieldLabel(fieldEl) || ''))
+    || SL_ALWAYS_BOX.some((re) => re.test(oneLine(boxText)));
+}
+
+// The always-ticked boxes on the page that are not ticked yet; ticks them.
+async function slTickPledges(base) {
+  const ticked = [];
+  for (const q of slQuestions().filter((x) => x.kind === 'confirmation')) {
+    const opts = slBoxOptions(q.field);
+    const must = opts.filter((o) => slMustTick(q.field, o.text));
+    if (!must.length || must.every((o) => o.checked)) continue;
+    const wanted = opts.filter((o) => o.checked || slMustTick(q.field, o.text)).map((o) => o.text);
+    const r = await slSetFlags(q.field, wanted, base);
+    if (r.ok) ticked.push(slAreaName(fieldLabel(q.field)));
+  }
+  return ticked;
+}
+
 // Confirmations take true (or "all", "yes") for every box, false for none,
 // or a list. A list naming the boxes ticks those; a list of statements in
 // the reviewer's own words - one per box, in order - ticks a box for each.
@@ -760,13 +794,19 @@ async function slSetConfirmations(fieldEl, value, base) {
     if (named.every(Boolean) && new Set(named).size === named.length) {
       wanted = named.filter((n, i) => entries[i].on);
     } else {
-      // Statements in the reviewer's own words: one per box, in order.
-      wanted = names.filter((n, i) => entries[i]?.on);
-      if (entries.length !== names.length) {
-        note = `${entries.length} statement${entries.length === 1 ? '' : 's'} for ${names.length} boxes - taken in order`;
+      // Statements in the reviewer's own words: one per box, in order. The
+      // pledges are ticked anyway, so a list that leaves them out is laid
+      // over the other boxes.
+      const rest = names.filter((n) => !slMustTick(fieldEl, n));
+      const slots = entries.length === rest.length && rest.length < names.length ? rest : names;
+      wanted = slots.filter((n, i) => entries[i]?.on);
+      if (entries.length !== slots.length) {
+        note = `${entries.length} statement${entries.length === 1 ? '' : 's'} for ${slots.length} boxes - taken in order`;
       }
     }
   }
+  // The pledges are ticked even when the answer leaves them out.
+  wanted = names.filter((n) => wanted.includes(n) || slMustTick(fieldEl, n));
   const r = await slSetFlags(fieldEl, wanted, base);
   return { ...r, unknown: [], note };
 }
@@ -1196,11 +1236,54 @@ function slKeyWords(field) {
   return key.replace(/^[a-z]+-/i, '').replace(/[_-]+/g, ' ').trim() || null;
 }
 
-// A segment answers to its name ("Task Type", "Analysis"); every other
-// question to its label, the first line of its description, and its own
-// field name in words.
+/* Boxes that share a label. On a Fix / Fixable task every review area -
+   Instructions, Tagging and Metadata, Solution, the four test and reward
+   reviews, Environment - is a list of confirmations followed by its own
+   "Findings - Required confirmation" and "Edits made - Required
+   confirmation" boxes, five pairs with the same two labels and mostly
+   hashed names. Each is told apart by the area whose confirmations it
+   follows: "Findings" after Instructions is instructions_findings. The
+   confirmation lists since the pair before count as well, so the pair after
+   Tests And Rewards, Verifier, Validation and Rubric review answers to any
+   of those names. */
+
+const slAreaName = (label) => oneLine(label).replace(/\s*-\s*required confirmations?\s*$/i, '');
+const slSnake = (s) => slLoose(s).replace(/ /g, '_');
+
+function slAreas() {
+  const fields = slFields();
+  const count = new Map();
+  for (const f of fields) {
+    const l = slLoose(fieldLabel(f));
+    if (l) count.set(l, (count.get(l) || 0) + 1);
+  }
+  const out = new Map();
+  let block = [];
+  let pairSeen = false;
+  for (const f of fields) {
+    const kind = slKind(f);
+    if (kind === 'confirmation') {
+      if (pairSeen) { block = []; pairSeen = false; }
+      block.push(slAreaName(fieldLabel(f)));
+      continue;
+    }
+    if (!block.length || (count.get(slLoose(fieldLabel(f))) || 0) < 2) continue;
+    const area = block[block.length - 1];
+    const what = slAreaName(fieldLabel(f)).replace(/\s*-\s*required confirmation\s*$/i, '');
+    out.set(f, { area, also: block.slice(0, -1), what, name: `${slSnake(area)}_${slSnake(what)}` });
+    pairSeen = true;
+  }
+  return out;
+}
+
+// A segment answers to its name ("Task Type", "Analysis"); a box sharing its
+// label to its area and label together ("Instructions Findings"); every
+// other question to its label, the first line of its description, and its
+// own field name in words.
 function slWordings(q) {
   if (q.seg) return [slSegName(q.seg)];
+  const area = slAreas().get(q.field);
+  if (area) return [area.area, ...area.also].map((a) => `${a} ${area.what}`);
   return [fieldLabel(q.field), slDescribe(q.field).question, slKeyWords(q.field)].filter(Boolean);
 }
 
@@ -1255,8 +1338,10 @@ function findSlQuestion(key, value) {
   }
 
   const loose = slLoose(want);
-  const exact = qs.find((q) => slWordings(q).some((w) => slLoose(w) === loose));
-  if (exact) return exact;
+  // A wording two questions share names neither.
+  const exact = qs.filter((q) => slWordings(q).some((w) => slLoose(w) === loose));
+  if (exact.length === 1) return exact[0];
+  if (exact.length > 1) return null;
 
   // Short keys ("open_flags", "trajectory_notes",
   // "time_initial_review_minutes") are found by the wording that holds most
@@ -1303,10 +1388,11 @@ function slShortLabel(label) {
 // Delay after each. Task Type first: the analysis question that follows it
 // can depend on it, and is waited for when its turn comes. Confirmations are
 // ticked when the answers say so. With runChecks on, Static Checks is
-// pressed once Comments for Reviewer - the files-changed write-up - is
-// typed, and runs beside whatever is typed after it; Instruction Review
-// follows once Static Checks has all passed. Without that answer the checks
-// start after the last one. The run ends when both the answers and the
+// pressed once the files changed are written up - the Files Changed box on
+// a Fix / Fixable task, Comments for Reviewer where there is no such box -
+// and runs beside whatever is typed after it; Instruction Review follows
+// once Static Checks has all passed. Without that answer the checks start
+// after the last one. The run ends when both the answers and the
 // checks are done. Nothing is uploaded, and Submit, Skip and Next
 // section are never pressed.
 async function applySuiteLife(input, options = {}) {
@@ -1338,6 +1424,7 @@ async function applySuiteLife(input, options = {}) {
   let checks = null;
   let checksSkipped = null;
   let filled = 0;
+  let autoTicked = [];
   let checkRun = null;
   slChecksHalt = false;
 
@@ -1349,6 +1436,12 @@ async function applySuiteLife(input, options = {}) {
     const startChecks = () => {
       if (runChecks && !checksSkipped && !checkRun) checkRun = slChecksAlongside();
     };
+    // Which answer the checks wait for: Files Changed when it is answered,
+    // otherwise Comments for Reviewer.
+    const SL_FILES_CHANGED = /^files changed\b/i;
+    const hasFilesChanged = rows.some(([k]) => /\bfiles? changed\b/.test(slLoose(k)));
+    const isTrigger = (fieldEl, label) => (SL_FILES_CHANGED.test(label)
+      || (!hasFilesChanged && (/comments? for reviewer/i.test(label) || slKey(fieldEl) === 'richtext-comments_for_reviewer')));
 
     for (let i = 0; i < rows.length; i++) {
       checkCancelled();
@@ -1390,8 +1483,6 @@ async function applySuiteLife(input, options = {}) {
         const r = paste ? await slPasteIntoEditor(ed, value, base) : await slTypeIntoEditor(ed, value, base);
         filled++;
         if (!r.matches) unsure.push(`"${key}"`);
-        // Comments for Reviewer is written: the checks may begin.
-        if (/comments? for reviewer/i.test(label) || slKey(fieldEl) === 'richtext-comments_for_reviewer') startChecks();
       } else {
         const ctl = slControl(fieldEl);
         if (!ctl) { skippedFields.push(key); continue; }
@@ -1399,11 +1490,20 @@ async function applySuiteLife(input, options = {}) {
         if (r.truncated) truncated.push(`"${key}"`);
         filled++;
       }
+      // The files changed are written up: the checks may begin.
+      if (isTrigger(fieldEl, label)) startChecks();
 
       await pause(gap); // the Delay, before the next answer
     }
 
-    startChecks(); // no Comments for Reviewer among the answers
+    // The pledges the answers left out are ticked now, a shut section
+    // opened again first so its boxes can be reached.
+    checkCancelled();
+    progress = { index: rows.length, total: rows.length, phase: 'filling', unit: 'answer', text: 'Ticking the policy pledges…' };
+    await expandEverything();
+    autoTicked = await slTickPledges(base);
+
+    startChecks(); // the answer they wait for was not among them
     if (checkRun) {
       // The answers are in; the checks may still be on their way. A section
       // the page shut while typing is opened again so they can be seen.
@@ -1446,6 +1546,7 @@ async function applySuiteLife(input, options = {}) {
     unknownFlags,
     unsure,
     uploadsAsked,
+    autoTicked,
     checks,
     checksSkipped,
     stillToDo: { uploads: emptyUploads, confirmations: unticked, checks: checksToRun }

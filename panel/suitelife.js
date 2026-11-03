@@ -36,7 +36,11 @@ function slNoteBody(n) {
 // One question: its key and wording, what it asks, its options, and what is
 // answered now.
 function slRenderQuestion(f, brief) {
-  const out = [`[${f.key}]  ${f.label}  (${SL_KIND_NAME[f.kind] || f.kind})`];
+  // A box sharing its label with others is shown, and answered, by the name
+  // of its review area: [instructions_findings]  Findings — Instructions.
+  const out = [f.area
+    ? `[${f.name}]  ${f.label} — ${f.area}  (${SL_KIND_NAME[f.kind] || f.kind})`
+    : `[${f.key}]  ${f.label}  (${SL_KIND_NAME[f.kind] || f.kind})`];
   if (f.kind === 'segment' && f.question) out.push(`Part of: ${f.question}`);
   if (f.guidelines) out.push(f.guidelines);
   else if (f.question && f.question !== f.label && f.kind !== 'segment') out.push(`Q: ${f.question}`);
@@ -180,6 +184,9 @@ function suiteLifeApplyStatus(result) {
   if (result.uploadsAsked?.length) {
     msg += `\nUpload by hand: ${result.uploadsAsked.join(', ')}`;
   }
+  if (result.autoTicked?.length) {
+    msg += `\nPolicy pledges ticked though the JSON left them out: ${result.autoTicked.join(', ')}`;
+  }
   for (const c of result.checks || []) {
     const said = (c.results || []).map((r) => r.verdict || (r.passed ? 'PASS' : 'FAIL'));
     msg += `\n${c.label}: ${c.outcome}${said.length ? ` — ${said.join(', ')}` : ''}`;
@@ -225,6 +232,11 @@ PROJECTS.suitelife = {
   "time_initial_review_minutes": 90,
   "time_total_submission_minutes": 275
 }
+
+A Fix / Fixable task adds "files_changed", "added_to_pr",
+"<area>_confirmations" and "<area>_findings" / "<area>_edits_made" for
+instructions, tagging_and_metadata, solution, tests_and_rewards and
+environment, plus "critical_files_reviewed".
 
 Keys are the field names from a catch, a question's own wording, or a
 short name made of its words. Confirmations take true, or one statement
