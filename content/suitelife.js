@@ -298,9 +298,8 @@ function slBoxes(fieldEl) {
 }
 
 // A list of boxes each saying "I reviewed…", "I checked…" is the reviewer
-// attesting to their own work. Ticking it is their statement to make, so it
-// is shown but never ticked here, as with Copperhead's "without AI
-// assistance".
+// attesting to their own work. It is ticked only when the answers say so -
+// a list of statements, one per box, or true for all of them.
 function slIsConfirmation(fieldEl) {
   if (/confirmation/i.test(`${slKey(fieldEl)} ${fieldLabel(fieldEl)}`)) return true;
   const texts = slBoxOptions(fieldEl).map((o) => o.text);
@@ -309,8 +308,9 @@ function slIsConfirmation(fieldEl) {
 
 // The shapes: segments (one or more selectors), a single choice, boxes to
 // tick, confirmations, a check button, a rich-text box, written text, a
-// number, an upload, and a box the page fills in itself. Uploads, checks,
-// confirmations and the page's own boxes are read, never written to.
+// number, an upload, and a box the page fills in itself. Uploads and the
+// page's own boxes are read, never written to; checks are pressed only
+// after the answers, when asked to.
 function slKind(fieldEl) {
   const id = fieldEl.getAttribute('data-testid') || '';
   if (/feedbackbutton/i.test(id)) return 'check';
@@ -329,7 +329,7 @@ function slKind(fieldEl) {
 }
 
 // What a fill can write to.
-const SL_WRITABLE = new Set(['segment', 'choice', 'flags', 'richtext', 'text', 'number']);
+const SL_WRITABLE = new Set(['segment', 'choice', 'flags', 'confirmation', 'richtext', 'text', 'number']);
 
 // A choice is a button with role="radio" beside a hidden input holding the
 // stored value ("Fixable", "Valid", "OpenFlags"), inside a label carrying the
@@ -530,7 +530,11 @@ async function readSuiteLife() {
         continue;
       }
       if (f.kind === 'check') { checks.push(f); continue; }
-      if (f.kind === 'confirmation') { confirmations.push(f); continue; }
+      if (f.kind === 'confirmation') {
+        confirmations.push(f);
+        answers[f.key] = f.answer || [];
+        continue;
+      }
       fields++;
       answers[f.key] = f.answer === undefined ? null : f.answer;
       if (slIsAnswered(f.answer)) answered++;
@@ -594,15 +598,6 @@ function slLoose(s) {
 }
 
 const slTight = (s) => slLoose(s).replace(/ /g, '');
-
-function slLikeness(a, b) {
-  const x = new Set(slLoose(a).split(' ').filter(Boolean));
-  const y = new Set(slLoose(b).split(' ').filter(Boolean));
-  if (!x.size || !y.size) return 0;
-  let shared = 0;
-  for (const w of x) if (y.has(w)) shared++;
-  return shared / (x.size + y.size - shared);
-}
 
 const SL_SAME_AS = new Map([
   ['yes', 'true'], ['true', 'yes'],
@@ -728,6 +723,92 @@ async function slSetFlags(fieldEl, value, base) {
   return { ok: !stuck, unknown, why: stuck ? `${stuck} box${stuck === 1 ? '' : 'es'} would not tick` : null };
 }
 
+// Confirmations take true (or "all", "yes") for every box, false for none,
+// or a list. A list naming the boxes ticks those; a list of statements in
+// the reviewer's own words - one per box, in order - ticks a box for each.
+async function slSetConfirmations(fieldEl, value, base) {
+  const names = slBoxOptions(fieldEl).map((o) => o.text);
+  if (!names.length) return { ok: false, why: 'no boxes to tick' };
+
+  let wanted;
+  let note = null;
+  const one = typeof value === 'string' ? value.trim() : null;
+  if (value === true || (one !== null && /^(all|yes|true|confirmed|done)$/i.test(one))) {
+    wanted = names;
+  } else if (value === false || (one !== null && /^(none|no|false)$/i.test(one))) {
+    wanted = [];
+  } else {
+    // Each entry is a box's wording, a statement, or an object
+    // { confirmation, checked, note } - the note is the reviewer's own and
+    // has no box on the page.
+    const entries = (Array.isArray(value) ? value : [value])
+      .filter((e) => e !== null && e !== undefined && e !== '')
+      .map((e) => (typeof e === 'object'
+        ? { text: String(e.confirmation ?? e.text ?? e.label ?? e.box ?? ''), on: e.checked !== false && e.ticked !== false }
+        : { text: String(e), on: true }));
+    // Which box an entry names: its wording, or close to it.
+    const boxFor = (text) => {
+      const exact = names.find((n) => slSameFlag(text, n));
+      if (exact) return exact;
+      const scored = names.map((n) => ({ n, ...slCoverage(text, n) }))
+        .filter((x) => x.held >= SL_CLOSE_ENOUGH)
+        .sort((a, b) => b.held - a.held || b.near - a.near);
+      return scored[0] && !(scored[1] && scored[1].held === scored[0].held && scored[1].near === scored[0].near)
+        ? scored[0].n : null;
+    };
+    const named = entries.map((e) => boxFor(e.text));
+    if (named.every(Boolean) && new Set(named).size === named.length) {
+      wanted = named.filter((n, i) => entries[i].on);
+    } else {
+      // Statements in the reviewer's own words: one per box, in order.
+      wanted = names.filter((n, i) => entries[i]?.on);
+      if (entries.length !== names.length) {
+        note = `${entries.length} statement${entries.length === 1 ? '' : 's'} for ${names.length} boxes - taken in order`;
+      }
+    }
+  }
+  const r = await slSetFlags(fieldEl, wanted, base);
+  return { ...r, unknown: [], note };
+}
+
+/* ---------- the checks, after the answers ----------
+   Static Checks first; Instruction Review stays locked until it has
+   answered. A check already answered is left as it is. A check needs the
+   corrected zip, so none is pressed while an upload box is empty. */
+
+function slCheckButton(fieldEl) {
+  return slOwn(fieldEl, 'button[data-testid="feedback-check"]').find((b) => !b.disabled)
+    || slOwn(fieldEl, 'button').find((b) => !b.disabled && !/clear feedback/i.test(buttonText(b)) && CHECK_BUTTON.test(buttonText(b)))
+    || null;
+}
+
+async function slRunChecks({ timeout = 180000 } = {}) {
+  const fields = slQuestions().filter((q) => q.kind === 'check').map((q) => q.field);
+  const ran = [];
+  for (let i = 0; i < fields.length; i++) {
+    checkCancelled();
+    const field = fields[i];
+    const label = fieldLabel(field);
+    progress = { index: i + 1, total: fields.length, phase: 'checking', unit: 'check', text: `Waiting on ${label}…` };
+    if (checkFinished(field)) { ran.push({ label, outcome: 'already answered' }); continue; }
+
+    field.scrollIntoView({ block: 'center' });
+    // The one before may have just answered; give the page a moment to
+    // unlock this one.
+    const btn = await until(() => slCheckButton(field), { timeout: 15000, step: 200 });
+    if (!btn) {
+      const lock = readSlCheck(field, { label })[0];
+      ran.push({ label, outcome: lock.waitsFor ? `locked - waits for ${lock.waitsFor}` : 'button disabled' });
+      continue;
+    }
+    await wait(settleMs);
+    btn.click();
+    const left = await awaitChecks([{ field }], timeout);
+    ran.push({ label, outcome: left.length ? 'no answer yet' : 'answered' });
+  }
+  return ran;
+}
+
 /* ---------- the rich-text box ----------
    TipTap renders a contenteditable and keeps its own document, which it
    rebuilds from what it sees the browser do. A value setter means nothing to
@@ -792,20 +873,51 @@ async function slClearEditor(ed, base) {
   }
 }
 
-// Typed at the Pace, with the same rhythm, hesitations and corrected slips as
-// every other field.
-async function slTypeIntoEditor(ed, value, base) {
-  const target = String(value ?? '').replace(/\r\n?/g, '\n');
-  ed.scrollIntoView({ block: 'center' });
-  ed.focus({ preventScroll: true });
-  await wait(base);
-  await slClearEditor(ed, base);
-  ed.focus({ preventScroll: true });
-  slCaretToEnd(ed);
-  await pause(base * rand(2, 6));
+// A key the editor alone acts on - Tab to indent a list item, Shift-Tab to
+// bring it back out. The browser has no command of its own for these.
+function slEditorChord(ed, key, { shiftKey = false } = {}) {
+  const init = { key, code: key, keyCode: key === 'Tab' ? 9 : undefined, shiftKey, bubbles: true, cancelable: true };
+  ed.dispatchEvent(new KeyboardEvent('keydown', init));
+  ed.dispatchEvent(new KeyboardEvent('keyup', init));
+}
 
-  const chars = Array.from(target);
-  const slips = target.length >= 12;
+// How many list items deep the caret sits.
+function slCaretDepth(ed) {
+  let d = 0;
+  for (let n = window.getSelection()?.anchorNode; n && n !== ed; n = n.parentNode) {
+    if (n.nodeName === 'LI') d++;
+  }
+  return d;
+}
+
+// A line of the answer, read the way Markdown reads it: "  - Kept …" is a
+// list item one level in, "1. Read …" a numbered one, anything else a plain
+// paragraph.
+const SL_LIST_LINE = /^([ \t]*)([-*+]|\d+[.)])[ \t]+(.*)$/;
+
+function slParseLine(line) {
+  const m = line.match(SL_LIST_LINE);
+  if (!m) return { depth: 0, marker: null, body: line };
+  const indent = m[1].replace(/\t/g, '  ').length;
+  return { depth: Math.floor(indent / 2) + 1, marker: /\d/.test(m[2]) ? '1. ' : '- ', body: m[3] };
+}
+
+// Bring the caret to a list depth with Tab and Shift-Tab, stopping where the
+// editor will not go further (the first item of a list cannot be indented).
+async function slReachDepth(ed, want, base) {
+  for (let guard = 0; guard < 8; guard++) {
+    const now = slCaretDepth(ed);
+    if (now === want) return;
+    slEditorChord(ed, 'Tab', { shiftKey: now > want });
+    await wait(keyDelay(base, ' ', ''));
+    if (slCaretDepth(ed) === now) return;
+  }
+}
+
+// One run of text, typed at the Pace with the same rhythm, hesitations and
+// corrected slips as every other field.
+async function slTypeRun(ed, text, base, slips) {
+  const chars = Array.from(text);
   let corrections = 0;
   for (let i = 0; i < chars.length; i++) {
     checkCancelled();
@@ -813,7 +925,7 @@ async function slTypeIntoEditor(ed, value, base) {
     const prev = chars[i - 1];
     if (prev === ' ' && /\w/.test(ch) && Math.random() < THINK_RATE) await pause(base * rand(4, 12));
 
-    const slip = slips && ch !== '\n' && Math.random() < TYPO_RATE ? slipFor(ch) : null;
+    const slip = slips && Math.random() < TYPO_RATE ? slipFor(ch) : null;
     if (!slip) {
       slEditorKey(ed, ch);
       await wait(keyDelay(base, ch, prev));
@@ -826,7 +938,7 @@ async function slTypeIntoEditor(ed, value, base) {
     let carried = 0;
     if (Math.random() < NOTICE_LATE) {
       const more = Math.floor(rand(1, 4));
-      while (carried < more && i + 1 + carried < chars.length && chars[i + 1 + carried] !== '\n') {
+      while (carried < more && i + 1 + carried < chars.length) {
         const k = chars[i + 1 + carried];
         slEditorKey(ed, k);
         await wait(keyDelay(base, k, chars[i + carried]));
@@ -843,13 +955,101 @@ async function slTypeIntoEditor(ed, value, base) {
     corrections++;
     i--;
   }
+  return corrections;
+}
+
+// Typed line by line. A list is written the way a person writes one in the
+// editor: "- " at the start of a paragraph turns it into a list, Enter makes
+// the next item, Tab and Shift-Tab move an item in and out, and the marker
+// is not typed again inside a list - TipTap would keep it as text. Where the
+// box makes no lists of its own, the lines go in as written.
+async function slTypeIntoEditor(ed, value, base) {
+  const target = String(value ?? '').replace(/\r\n?/g, '\n');
+  ed.scrollIntoView({ block: 'center' });
+  ed.focus({ preventScroll: true });
+  await wait(base);
+  await slClearEditor(ed, base);
+  ed.focus({ preventScroll: true });
+  slCaretToEnd(ed);
+  await pause(base * rand(2, 6));
+
+  const slips = target.length >= 12;
+  let corrections = 0;
+  const lines = target.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    checkCancelled();
+    if (i) {
+      slEditorKey(ed, '\n');
+      await wait(keyDelay(base, '\n', ''));
+    }
+    const line = slParseLine(lines[i]);
+    const inList = slCaretDepth(ed) > 0;
+
+    if (!line.marker) {
+      // Out of the list first, then the paragraph.
+      if (inList) await slReachDepth(ed, 0, base);
+      corrections += await slTypeRun(ed, line.body, base, slips);
+    } else if (inList) {
+      await slReachDepth(ed, line.depth, base);
+      corrections += await slTypeRun(ed, line.body, base, slips);
+    } else {
+      // A fresh paragraph: the marker starts the list (and stays as text
+      // where the box has no lists), then any further levels.
+      await slTypeRun(ed, line.marker, base, false);
+      if (slCaretDepth(ed) > 0) {
+        await slReachDepth(ed, line.depth, base);
+      } else if (line.depth > 1) {
+        await slTypeRun(ed, '  '.repeat(line.depth - 1), base, false);
+      }
+      corrections += await slTypeRun(ed, line.body, base, slips);
+    }
+  }
 
   await wait(base * 2);
   return { typed: target.length, corrections, matches: await slEditorHolds(ed, target, base) };
 }
 
-// The whole text as one paste. TipTap reads the clipboard off the event and
-// turns each line into a paragraph of its own.
+/* Markdown-ish text as HTML, for a paste the editor can build lists, code
+   and bold from: nested "- " and "1. " lists, `code`, **bold**, and a
+   paragraph per other line. */
+
+const slEscape = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+function slInlineHtml(text) {
+  return text.split(/(`[^`]+`)/).map((part) => (/^`[^`]+`$/.test(part)
+    ? `<code>${slEscape(part.slice(1, -1))}</code>`
+    : slEscape(part).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>'))).join('');
+}
+
+function slTextToHtml(text) {
+  const out = [];
+  const open = []; // the list tags open, innermost last
+  const closeTo = (depth) => {
+    while (open.length > depth) out.push(`</li></${open.pop()}>`);
+  };
+  for (const raw of text.split('\n')) {
+    const line = slParseLine(raw);
+    if (!line.marker) {
+      closeTo(0);
+      out.push(line.body.trim() ? `<p>${slInlineHtml(line.body)}</p>` : '<p></p>');
+      continue;
+    }
+    const tag = line.marker === '- ' ? 'ul' : 'ol';
+    const depth = Math.min(line.depth, open.length + 1); // no skipping a level
+    closeTo(depth);
+    if (open.length === depth) out.push('</li>');
+    while (open.length < depth) {
+      open.push(tag);
+      out.push(`<${tag}>`);
+    }
+    out.push(`<li><p>${slInlineHtml(line.body)}</p>`);
+  }
+  closeTo(0);
+  return out.join('');
+}
+
+// The whole text as one paste, carried as HTML as well as plain text so the
+// lists, code and bold come through as they would from a document.
 async function slPasteIntoEditor(ed, value, base) {
   const target = String(value ?? '').replace(/\r\n?/g, '\n');
   ed.scrollIntoView({ block: 'center' });
@@ -863,6 +1063,7 @@ async function slPasteIntoEditor(ed, value, base) {
   try {
     const dt = new DataTransfer();
     dt.setData('text/plain', target);
+    dt.setData('text/html', slTextToHtml(target));
     const ev = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });
     taken = !ed.dispatchEvent(ev);
   } catch { /* no DataTransfer here: fall back below */ }
@@ -877,11 +1078,15 @@ async function slPasteIntoEditor(ed, value, base) {
   return { typed: target.length, matches: await slEditorHolds(ed, target, base) };
 }
 
-// Whether the box says what was asked, spacing aside: a paragraph break can
-// come back as one newline or two.
+// Only the words and figures, for comparing: list markers become bullets,
+// backticks become code and spacing changes, none of which is a wrong answer.
+const slGist = (s) => String(s).replace(/^[ \t]*(?:[-*+]|\d+[.)])[ \t]+/gm, '')
+  .replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
+
+// Whether the box says what was asked.
 async function slEditorHolds(ed, target, base) {
-  const want = slSpaces(target);
-  return !!(await until(() => slSpaces(slEditorText(ed)) === want, { timeout: Math.max(800, base * 6) }));
+  const want = slGist(target);
+  return !!(await until(() => slGist(slEditorText(ed)) === want, { timeout: Math.max(800, base * 6) }));
 }
 
 /* ---------- finding the question an answer is for ---------- */
@@ -904,14 +1109,56 @@ function slQuestions() {
 
 const slQKey = (q) => (q.seg ? `${slKey(q.field)}:${slSegName(q.seg)}` : slKey(q.field));
 
-// A segment answers to its name ("Task Type", "Analysis"); every other
-// question to its label and the first line of its description.
-function slWordings(q) {
-  if (q.seg) return [slSegName(q.seg)];
-  return [fieldLabel(q.field), slDescribe(q.field).question].filter(Boolean);
+// The words of a field's own name without its kind: "list_of_open_flags" from
+// "textarea-list_of_open_flags", "how_long_in_minutes…" from "numeric-how_…".
+// A name built on a hash ("radio-760f2-feature", "textarea-d9b92") says
+// nothing.
+function slKeyWords(field) {
+  const key = slKey(field);
+  if (/^[a-z]+-[0-9a-f]{5}(?:-|$)/i.test(key)) return null;
+  return key.replace(/^[a-z]+-/i, '').replace(/[_-]+/g, ' ').trim() || null;
 }
 
-const SL_CLOSE_ENOUGH = 0.75; // share of words two wordings must have in common
+// A segment answers to its name ("Task Type", "Analysis"); every other
+// question to its label, the first line of its description, and its own
+// field name in words.
+function slWordings(q) {
+  if (q.seg) return [slSegName(q.seg)];
+  return [fieldLabel(q.field), slDescribe(q.field).question, slKeyWords(q.field)].filter(Boolean);
+}
+
+const SL_CLOSE_ENOUGH = 0.75; // share of the key's words a wording must hold
+
+// Words that carry no meaning for matching, and words that mean the same:
+// "time_total_submission_minutes" is "How long … this entire submission?".
+const SL_FILLER = new Set(['a', 'an', 'the', 'of', 'to', 'in', 'for', 'and', 'or', 'is', 'it', 'its',
+  'you', 'your', 'did', 'do', 'this', 'that', 'on', 'with', 'what', 'which', 'take', 'how', 'long']);
+const SL_SYNONYM = new Map([
+  ['entire', 'total'], ['whole', 'total'], ['overall', 'total'],
+  ['min', 'minute'], ['mins', 'minute'], ['duration', 'time'], ['comment', 'comments']
+]);
+
+function slWordSet(s) {
+  const loose = slLoose(s).replace(/\bhow long\b/g, 'time');
+  const out = new Set();
+  for (let w of loose.split(' ')) {
+    if (!w || SL_FILLER.has(w)) continue;
+    if (/ies$/.test(w) && w.length > 4) w = `${w.slice(0, -3)}y`;
+    else if (/[^s]s$/.test(w) && w.length > 3) w = w.slice(0, -1);
+    out.add(SL_SYNONYM.get(w) || w);
+  }
+  return out;
+}
+
+// How much of the key a wording holds, and how close the two are overall.
+function slCoverage(key, wording) {
+  const k = slWordSet(key);
+  const w = slWordSet(wording);
+  if (!k.size || !w.size) return { held: 0, near: 0 };
+  let shared = 0;
+  for (const x of k) if (w.has(x)) shared++;
+  return { held: shared / k.size, near: shared / (k.size + w.size - shared), words: k.size };
+}
 
 // A key is the question's own name ("textarea-hard_parts_covered",
 // "multidimensionradio-segments-valid:Analysis"); its wording works as well,
@@ -934,11 +1181,25 @@ function findSlQuestion(key, value) {
   const exact = qs.find((q) => slWordings(q).some((w) => slLoose(w) === loose));
   if (exact) return exact;
 
+  // Short keys ("open_flags", "trajectory_notes",
+  // "time_initial_review_minutes") are found by the wording that holds most
+  // of their words, the closer wording winning a tie. A one-word key must
+  // be held whole, and by one question only.
   const scored = qs
-    .map((q) => ({ q, s: Math.max(0, ...slWordings(q).map((w) => slLikeness(w, want))) }))
-    .filter((x) => x.s >= SL_CLOSE_ENOUGH)
-    .sort((a, b) => b.s - a.s);
-  return scored[0]?.q || null;
+    .map((q) => {
+      let best = { held: 0, near: 0, words: 0 };
+      for (const w of slWordings(q)) {
+        const c = slCoverage(want, w);
+        if (c.held > best.held || (c.held === best.held && c.near > best.near)) best = c;
+      }
+      return { q, ...best };
+    })
+    .filter((x) => x.held >= (x.words === 1 ? 1 : SL_CLOSE_ENOUGH))
+    .sort((a, b) => b.held - a.held || b.near - a.near);
+  if (!scored.length) return null;
+  const [top, next] = scored;
+  if (next && next.held === top.held && next.near === top.near) return null; // could be either
+  return top.q;
 }
 
 // The question, with the section that holds it opened if it is shut.
@@ -963,9 +1224,10 @@ function slShortLabel(label) {
 
 // Answers are written in the order given, one question at a time, with the
 // Delay after each. Task Type first: the analysis question that follows it
-// can depend on it, and is waited for when its turn comes. Nothing is
-// uploaded, no check is run, no confirmation ticked, and Submit, Skip and
-// Next section are never pressed.
+// can depend on it, and is waited for when its turn comes. Confirmations are
+// ticked when the answers say so. With runChecks on and the zip uploaded,
+// the checks are pressed at the end and waited for. Nothing is uploaded, and
+// Submit, Skip and Next section are never pressed.
 async function applySuiteLife(input, options = {}) {
   if (busy) throw new Error('Already typing. Press Stop first.');
 
@@ -977,6 +1239,7 @@ async function applySuiteLife(input, options = {}) {
   const base = Math.max(0, Number(options.speed ?? 200));
   const paste = options.entry === 'paste'; // typing is the default here
   const gap = Math.max(0, Number(options.gap ?? 5000));
+  const runChecks = options.runChecks !== false;
   hiddenDuringRun = false;
   busy = true;
   cancelled = false;
@@ -990,6 +1253,9 @@ async function applySuiteLife(input, options = {}) {
   const leftToYou = [];
   const unknownFlags = [];
   const unsure = [];
+  const uploadsAsked = [];
+  let checks = null;
+  let checksSkipped = null;
   let filled = 0;
 
   try {
@@ -1002,7 +1268,12 @@ async function applySuiteLife(input, options = {}) {
       if (document.hidden) hiddenDuringRun = true;
 
       const q = await slFindOpening(key, value);
-      if (!q) { skippedFields.push(key); continue; }
+      if (!q) {
+        // The corrected zip goes into the upload box by hand.
+        if (/\b(zip|upload|file)\b/.test(slLoose(key)) && readSlUploads().length) uploadsAsked.push(key);
+        else skippedFields.push(key);
+        continue;
+      }
       const { field: fieldEl, seg } = q;
       const kind = q.kind;
       const label = seg ? slSegName(seg) : (fieldLabel(fieldEl) || key);
@@ -1021,6 +1292,10 @@ async function applySuiteLife(input, options = {}) {
         const r = await slSetFlags(fieldEl, value, base);
         if (r.unknown?.length) unknownFlags.push(`"${key}": ${r.unknown.join('; ')}`);
         if (r.ok) filled++; else refused.push(`"${key}" - ${r.why}`);
+      } else if (kind === 'confirmation') {
+        const r = await slSetConfirmations(fieldEl, value, base);
+        if (r.note) unsure.push(`"${key}": ${r.note}`);
+        if (r.ok) filled++; else refused.push(`"${key}" - ${r.why}`);
       } else if (kind === 'richtext') {
         const ed = slEditor(fieldEl);
         const r = paste ? await slPasteIntoEditor(ed, value, base) : await slTypeIntoEditor(ed, value, base);
@@ -1036,6 +1311,12 @@ async function applySuiteLife(input, options = {}) {
 
       await pause(gap); // the Delay, before the next answer
     }
+
+    const empty = readSlUploads().filter((u) => !u.files.length);
+    if (!runChecks) checksSkipped = 'turned off';
+    else if (!slQuestions().some((q) => q.kind === 'check')) checksSkipped = 'no checks on this page';
+    else if (empty.length) checksSkipped = 'the corrected zip is not uploaded yet';
+    else checks = await slRunChecks();
   } finally {
     busy = false;
     progress = null;
@@ -1065,6 +1346,9 @@ async function applySuiteLife(input, options = {}) {
     leftToYou,
     unknownFlags,
     unsure,
+    uploadsAsked,
+    checks,
+    checksSkipped,
     stillToDo: { uploads: emptyUploads, confirmations: unticked, checks: checksToRun }
   };
 }

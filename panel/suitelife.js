@@ -13,8 +13,8 @@ const SL_KIND_NAME = {
   segment: 'pick one',
   choice: 'pick one',
   flags: 'tick any that apply',
-  confirmation: 'confirmations — tick these yourself',
-  check: 'check — run it yourself on the page',
+  confirmation: 'confirmations — true, or one statement per box',
+  check: 'check — pressed after the answers when the zip is up',
   richtext: 'written answer, rich text',
   text: 'written answer',
   number: 'a number'
@@ -175,7 +175,17 @@ function suiteLifeApplyStatus(result) {
     msg += `\nFilled in by the page, not by you: ${result.readOnly.join(', ')}`;
   }
   if (result.unsure?.length) {
-    msg += `\nCheck the wording came out right in: ${result.unsure.join(', ')}`;
+    msg += `\nCheck these came out right: ${result.unsure.join(', ')}`;
+  }
+  if (result.uploadsAsked?.length) {
+    msg += `\nUpload by hand: ${result.uploadsAsked.join(', ')}`;
+  }
+  for (const c of result.checks || []) {
+    const said = (c.results || []).map((r) => r.verdict || (r.passed ? 'PASS' : 'FAIL'));
+    msg += `\n${c.label}: ${c.outcome}${said.length ? ` — ${said.join(', ')}` : ''}`;
+  }
+  if (result.checksSkipped && result.checksSkipped !== 'turned off') {
+    msg += `\nChecks not run: ${result.checksSkipped}.`;
   }
   // An answer given for a check or a confirmation is not written; the to-do
   // lines below already name those, so only anything else is listed here.
@@ -186,9 +196,12 @@ function suiteLifeApplyStatus(result) {
   const todo = slToDo(todoIn);
   if (todo.length) msg += `\n${todo.join('\n')}`;
 
-  const clean = result.filled === result.requested && !result.skippedFields.length
+  const checksOk = (result.checks || []).every((c) => /answered/.test(c.outcome)
+    && (c.results || []).every((r) => r.passed));
+  const clean = result.filled + (result.uploadsAsked?.length || 0) === result.requested
+    && !result.skippedFields.length
     && !result.refused.length && !result.truncated.length && !result.unsure?.length
-    && !result.unknownFlags?.length;
+    && !result.unknownFlags?.length && checksOk;
   return { msg, clean };
 }
 
@@ -202,17 +215,20 @@ PROJECTS.suitelife = {
   placeholder: `Paste or upload answers like this:
 
 "answers": {
-  "Task Type": "Feature",
-  "Analysis": "Fixable",
-  "What is your analysis of the task you downloaded above?": "Fixable",
-  "Trajectory notes - Required confirmations": "Critical files reviewed: …",
-  "Hard Parts Covered": "Stateful parsing of Maven's output…",
-  "False-positive risks": "None found",
-  "Comments for Reviewer": "Dropped clean_replacement…",
-  "How long (in minutes) did it take you to review the initial task and determine its validity?": 40
+  "task_type": "Feature",
+  "analysis": "Open Flags",
+  "trajectories_confirmations": true,
+  "trajectory_notes": "Critical files reviewed: …",
+  "open_flags": "- tests/…: nothing checks …",
+  "hard_parts_covered": "- Collapsing passing Surefire blocks …",
+  "comments_for_reviewer": "Files changed:\\n- instruction.md: …\\n  - Removed …",
+  "time_initial_review_minutes": 90,
+  "time_total_submission_minutes": 275
 }
 
-Keys are the field names from a catch, or a question's own wording.
+Keys are the field names from a catch, a question's own wording, or a
+short name made of its words. Confirmations take true, or one statement
+per box. "- " lines become lists in Comments for Reviewer.
 Answers go in the order written, with the Delay after each one, so
 put Task Type before the analysis question that follows it.`,
   // A review is a form a person fills in by hand, so it is typed out.
@@ -223,13 +239,19 @@ put Task Type before the analysis question that follows it.`,
   toInputText: (data) => answersJson(data.answers),
 
   catchStatus: suiteLifeCatchStatus,
-  applyOptions: () => ({ gap: Number($('delay').value) }),
+  applyOptions: () => ({ gap: Number($('delay').value), runChecks: $('slRunChecks').checked }),
   applyStatus: suiteLifeApplyStatus,
   badge(res) {
     const sl = res.suitelife;
     return sl
       ? `${SL_STAGE_NAME[sl.stage] || sl.stage} · ${sl.fields} question${sl.fields === 1 ? '' : 's'}`
       : 'no Suite Life task found';
-  }
+  },
   // The Delay is saved and restored by Copperhead's entry: it is one control.
+  saveState: () => ({ slRunChecks: $('slRunChecks').checked }),
+  loadState(s) {
+    $('slRunChecks').checked = s.slRunChecks !== false;
+  }
 };
+
+$('slRunChecks').addEventListener('change', () => save());

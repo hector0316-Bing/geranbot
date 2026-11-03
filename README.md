@@ -883,11 +883,12 @@ segment after a colon: `multidimensionradio-segments-valid:Analysis`.
 
 **Static Checks** and **Instruction Review** (Submission Feedback) are shown
 with their state — *not run yet*, *locked* until another check passes, or
-their PASS/FAIL results once they have answered. They are never pressed.
+their PASS/FAIL results once they have answered. A catch never presses them;
+a fill can, at its end (see below).
 
 **Trajectories - Required confirmations** is shown box by box with how many
-are ticked. Each box is the reviewer saying "I reviewed…", "I checked…", so,
-like Copperhead's "without AI assistance", it is never ticked for you.
+are ticked. Each box is the reviewer saying "I reviewed…", "I checked…", so
+a fill ticks them only when the answers say so.
 
 The catch's status line ends with what is still yours to do by hand: an
 empty upload, unticked confirmations, checks not yet run.
@@ -902,14 +903,23 @@ writes the template, with every question a fill can write.
 | Task Type, Analysis (the segments) | the wording | `"Feature"`, `"Open Flags"`, `"Suspected too easy"` |
 | the analysis choice | its wording, or the part before the bracket | `"Fixable"`, `"Valid-as-is"`, `"Open Flags"` |
 | text | the text | `"None found"` |
-| Comments for Reviewer | the text; a new line starts a new paragraph | `"First point.
-Second point."` |
+| Comments for Reviewer | the text; a new line starts a new paragraph, `- ` and `1. ` lines make lists, two spaces per level | `"Files changed:
+- instruction.md
+  - Removed …"` |
+| Trajectories - Required confirmations | `true` for all, or a list — the boxes' wording, one statement per box in order, or `{ "confirmation", "checked", "note" }` objects (the note is yours; the page has no box for it) | `true` |
 | a number | the number | `40` |
 
 Keys are the names a catch gives (`textarea-hard_parts_covered`,
 `multidimensionradio-segments-valid:Task Type`) or a question's wording
 (`"Hard Parts Covered"`, `"Task Type"`, `"Analysis"`), matched loosely as on
-Copperhead. The Analysis segment's options are the page's stored values, so
+Copperhead. A short name made of the question's words works as well:
+`open_flags` finds *List of Open Flags*, `trajectory_notes` the trajectory
+notes box, `time_initial_review_minutes` and `time_total_submission_minutes`
+the two *How long (in minutes)…* questions. The key's words are looked for in
+the label, the first line of the guidance and the field's own name, ignoring
+small words and plurals ("how long" counts as time, "entire" as total); the
+question holding the most of them wins, and a tie between two is left
+unwritten rather than guessed. The Analysis segment's options are the page's stored values, so
 the spoken wording is matched to them: *Open Flags* finds OpenFlags,
 *Suspected too easy* finds Easy, *Valid-as-is* finds Valid. The segment
 field's bare name works too and goes to whichever selector has the option
@@ -920,16 +930,27 @@ yet is waited for, and its section opened.
 **Comments for Reviewer** is a rich-text editor (TipTap), not a text box, so
 it is written the way the browser edits: one editing command per key, Enter
 for a new paragraph, with the same rhythm and corrected slips as any other
-field. **Paste per field** sends it a real paste event, which the editor
-splits into paragraphs. Afterwards the box is read back. If it does not say
-what was asked — the editor can turn a line typed as `- ` or `1. ` into a
-list — the status line says to check it.
+field. Lists are written as a person writes them there: `- ` (or `1. `) at
+the start of a paragraph starts a list, Enter makes the next item, and Tab
+and Shift-Tab move an item in and out — the marker is not typed again inside
+a list, where the editor would keep it as text. Backticks become code as
+they are typed. **Paste per field** sends a real paste event carrying the
+text as HTML too, so the lists, code and bold come through the same way.
+Afterwards the box is read back, words only, and the status line says if it
+does not match.
 
-Not written, and named in the status line if an answer asks for them: the
-Final grading feedback box (filled in by the page), the confirmations, and
-the checks. Nothing is uploaded. **Submit, Skip and Next section are never
-pressed.** When the run ends, the status line repeats what is still yours to
-do — the upload, the confirmations, the checks.
+**Then run Static Checks and Instruction Review** (on by default) presses
+the checks once every answer is in: Static Checks first, then Instruction
+Review once the page unlocks it, each waited for (up to three minutes), and
+their PASS/FAIL put in the status line. A check already answered is left as
+it is. They need the corrected zip, so while an upload box is empty they are
+not pressed — upload first, then fill.
+
+Not written: the Final grading feedback box (filled in by the page) and the
+uploads — a key such as `corrected_zip` is reported as *upload by hand*.
+**Submit, Skip and Next section are never pressed.** When the run ends, the
+status line repeats what is still yours to do — the upload, any unticked
+confirmations, checks not run.
 
 **Delay** (2–7 s, 5 s by default) is the wait after each answer, the same
 setting Copperhead uses. Text is **typed per key** by default.
