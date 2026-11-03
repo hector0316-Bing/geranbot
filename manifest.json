@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Criteria Catcher",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "description": "Catch a Geranium, Rudder, Terminus, Copperhead or Suite Life task page into JSON, or fill its answers back in one field at a time.",
   "permissions": ["activeTab", "scripting", "storage", "sidePanel"],
   "icons": {

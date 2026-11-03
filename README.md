@@ -939,11 +939,13 @@ text as HTML too, so the lists, code and bold come through the same way.
 Afterwards the box is read back, words only, and the status line says if it
 does not match.
 
-**Run Static Checks while typing, then Instruction Review once it all
-passes** (on by default). Static Checks is pressed as the fill begins and
-runs while the answers are typed. When it answers with every result a
-PASS, Instruction Review — locked until then — is pressed, still alongside
-the typing. If Static Checks fails, Instruction Review is not pressed. A
+**Run Static Checks once Comments for Reviewer is typed, then Instruction
+Review once it all passes** (on by default). Static Checks is pressed as
+soon as Comments for Reviewer — the files-changed write-up — has been
+written, and runs while any answers after it (the handling times) are
+typed. Without that answer, it is pressed after the last one. When it
+answers with every result a PASS, Instruction Review — locked until then —
+is pressed, still alongside the typing. If Static Checks fails, Instruction Review is not pressed. A
 check already passing is left as it is; a failed answer is cleared and asked
 again. The checks never scroll the page or take the caret, so the typing
 goes on undisturbed, and each is given up to five minutes on the page. The

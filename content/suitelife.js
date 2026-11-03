@@ -1303,9 +1303,11 @@ function slShortLabel(label) {
 // Delay after each. Task Type first: the analysis question that follows it
 // can depend on it, and is waited for when its turn comes. Confirmations are
 // ticked when the answers say so. With runChecks on, Static Checks is
-// pressed as the typing begins and runs beside it, then Instruction Review
-// once Static Checks has all passed; the run ends when both the answers and
-// the checks are done. Nothing is uploaded, and Submit, Skip and Next
+// pressed once Comments for Reviewer - the files-changed write-up - is
+// typed, and runs beside whatever is typed after it; Instruction Review
+// follows once Static Checks has all passed. Without that answer the checks
+// start after the last one. The run ends when both the answers and the
+// checks are done. Nothing is uploaded, and Submit, Skip and Next
 // section are never pressed.
 async function applySuiteLife(input, options = {}) {
   if (busy) throw new Error('Already typing. Press Stop first.');
@@ -1344,7 +1346,9 @@ async function applySuiteLife(input, options = {}) {
 
     if (!runChecks) checksSkipped = 'turned off';
     else if (!slQuestions().some((q) => q.kind === 'check')) checksSkipped = 'no checks on this page';
-    else checkRun = slChecksAlongside();
+    const startChecks = () => {
+      if (runChecks && !checksSkipped && !checkRun) checkRun = slChecksAlongside();
+    };
 
     for (let i = 0; i < rows.length; i++) {
       checkCancelled();
@@ -1386,6 +1390,8 @@ async function applySuiteLife(input, options = {}) {
         const r = paste ? await slPasteIntoEditor(ed, value, base) : await slTypeIntoEditor(ed, value, base);
         filled++;
         if (!r.matches) unsure.push(`"${key}"`);
+        // Comments for Reviewer is written: the checks may begin.
+        if (/comments? for reviewer/i.test(label) || slKey(fieldEl) === 'richtext-comments_for_reviewer') startChecks();
       } else {
         const ctl = slControl(fieldEl);
         if (!ctl) { skippedFields.push(key); continue; }
@@ -1397,6 +1403,7 @@ async function applySuiteLife(input, options = {}) {
       await pause(gap); // the Delay, before the next answer
     }
 
+    startChecks(); // no Comments for Reviewer among the answers
     if (checkRun) {
       // The answers are in; the checks may still be on their way. A section
       // the page shut while typing is opened again so they can be seen.
