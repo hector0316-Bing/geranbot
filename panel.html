@@ -53,6 +53,12 @@
           (Review and Adjudication to come). Catches the task brief, IDs, uploads
           and notes, and types the review answers back in.</span>
       </button>
+      <button class="pick-card" type="button" data-project="suitelife">
+        <span class="pick-name">Suite Life</span>
+        <span class="pick-note">Snorkel coding-task review — Submission. Catches
+          the task facts, the Task Report, any previous-round feedback and the
+          form, and types the answers back in, rich text included.</span>
+      </button>
     </div>
 
     <p id="pickHint" class="hint"></p>
@@ -69,7 +75,7 @@
       <p id="modeHint" class="hint"></p>
     </div>
 
-    <label class="check not-rudder not-terminus not-copperhead">
+    <label class="check not-rudder not-terminus not-copperhead not-suitelife">
       <input type="checkbox" id="runChecks" checked>
       Run the feedback checks first
     </label>
@@ -179,7 +185,7 @@
           <option value="360">Unhurried</option>
         </select>
       </label>
-      <label class="only-copperhead">
+      <label class="only-delay">
         Delay
         <select id="delay" title="Pause after each answer before going on to the next">
           <option value="2000">2s</option>
@@ -190,7 +196,7 @@
           <option value="7000">7s</option>
         </select>
       </label>
-      <label class="not-copperhead">
+      <label class="not-delay">
         Gap
         <select id="gap" title="Pause after each field, and how much room every other step in the run is given">
           <option value="500">0.5s</option>
@@ -225,6 +231,14 @@
       wording; put it after the answer that brings it in.
     </p>
 
+    <p class="hint only-suitelife">
+      Answered in the order written, waiting the Delay after each one. A choice
+      takes its wording or the part before the bracket (<code>"Feature"</code>,
+      <code>"Open Flags"</code>), text and numbers their value. Put
+      <code>"Task Type"</code> and <code>"Analysis"</code> first. Uploads, the
+      checks and the confirmations are left to you; Submit is never pressed.
+    </p>
+
     <button id="apply" class="primary">Type into page</button>
   </section>
 
@@ -248,5 +262,6 @@
 <script src="panel/rudder.js"></script>
 <script src="panel/terminus.js"></script>
 <script src="panel/copperhead.js"></script>
+<script src="panel/suitelife.js"></script>
 <script src="panel/main.js"></script>
 </html>

@@ -27,6 +27,7 @@ const PAGE_SCRIPTS = [
   'content/rudder.js',
   'content/terminus.js',
   'content/copperhead.js',
+  'content/suitelife.js',
   'content/main.js'
 ];
 

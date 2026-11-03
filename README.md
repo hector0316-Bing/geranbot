@@ -2,10 +2,10 @@
 
 Chrome extension (MV3) that runs in the browser's **side panel**. It reads a
 task page into one copyable block, and writes an answer back into it one field
-at a time, at a human pace. Four projects are handled: **Geranium**'s criteria
+at a time, at a human pace. Five projects are handled: **Geranium**'s criteria
 and rubric pages, **Rudder**'s preference comparisons, **Terminus-3rd**'s
-Terminal Bench 3.0 tasks, which are only read, and **Copperhead**'s asset and
-workflow validation reviews.
+Terminal Bench 3.0 tasks, which are only read, **Copperhead**'s asset and
+workflow validation reviews, and **Suite Life**'s coding-task reviews.
 
 ## Install
 
@@ -22,7 +22,7 @@ the page scrolls. Drag its inner edge to resize. Needs Chrome 116 or newer.
 Nothing runs until you open the panel — the page script is injected on demand
 under `activeTab`, so the extension has no access to any other site.
 
-## Four projects
+## Five projects
 
 Before anything else the panel asks which project the task belongs to, and the
 answer holds for that tab:
@@ -37,10 +37,13 @@ answer holds for that tab:
 - **Copperhead** — Snorkel's asset and workflow validation: an application's
   asset is downloaded, opened and reviewed, then the workflow around it.
   **Copperhead tasks**, near the end, is about those.
+- **Suite Life** — Snorkel's review of a coding task delivered as a zip: its
+  facts and Task Report on the left, a review form on the right.
+  **Suite Life tasks**, near the end, is about those.
 
 The page usually says which it is — Geranium by its criteria list or its "In
-this refinery / prompt generation project" blurb, Terminus by its feedback
-boxes, Copperhead by its task brief (Task ID beside the application used) or
+this refinery / prompt generation project" blurb, Suite Life by its "Suite
+Life task" upload, Terminus by its feedback boxes, Copperhead by its task brief (Task ID beside the application used) or
 its "App and Asset Review" sections, Rudder by its "Rating Assessment" and "Overall preference" sections or
 its name in the heading — and whichever it looks like is marked **on this
 page** in the chooser, so the answer is normally a confirmation rather than a
@@ -834,6 +837,103 @@ from. Text is **typed per key** by default rather than pasted, at the Pace
 chosen, and a choice or a tick gets a beat before it is clicked. **Stop** works
 throughout, and the status line names anything it could not write.
 
+## Suite Life tasks
+
+A Suite Life (Snorkel) task is the review of a coding task — a feature or a
+fix — that arrives as a zip. The left panel gives the task's facts and a
+**Task Report**: what the task asks, how the reference solves it, how it is
+tested, how the models did, and the findings to review. The form on the
+right has four sections: Submitter Questions, Submission Feedback,
+Additional Submitter Questions, and Final Comment and Handling Time. Its
+reading and filling are its own, in [content/suitelife.js](content/suitelife.js)
+and [panel/suitelife.js](panel/suitelife.js); nothing in them is shared with
+Copperhead.
+
+Only **Submission** has been seen. A heading saying Review or Adjudication is
+recorded as that stage and read the same way.
+
+### What a catch takes
+
+1. The **stage**, **Last saved at** and the **time left** on the task, with
+   the UID in its own box as on every project.
+2. **Final grading feedback (previous round)**, when the task has come back
+   from a sendback. The page fills that box in itself and it cannot be
+   edited, so it is read as feedback and put first, not offered as a
+   question. Empty on a first submission, and then left out.
+3. **Task notes** and the **Evaluation criteria** sidebar, when either holds
+   anything ("No evaluation information available" counts as nothing).
+4. The **task facts** — Task Type, File Name, Category, Difficulty, Task Tags,
+   Languages.
+5. **Uploads** — every upload field, with what is in it: the task zip as it
+   came, and the place to re-upload the corrected task, shown as *nothing
+   uploaded yet* while it is empty.
+6. The **Task Report**, written out as Markdown: headings, paragraphs with
+   inline code, both tables as Markdown tables, and the findings as nested
+   lists, so each *Finding* and *Review* stays under its *Concept*.
+7. Every **section** and under it every question: key, wording and guidance,
+   options, and what is answered now. Guidance keeps its shape — the
+   Trajectory notes template comes through with its bold headings and its
+   taste-score lists. A shut section is opened before it is read, one at a
+   time, so a form that keeps only one section open is still read whole.
+
+The **"(SEGMENTS)"** field holds two selectors, **Task Type** (Feature, Fix)
+and **Analysis** (OpenFlags, Easy, Valid, Fixable), whose radios share one
+name on the page. Each is caught as a question of its own, keyed with the
+segment after a colon: `multidimensionradio-segments-valid:Analysis`.
+
+**Static Checks** and **Instruction Review** (Submission Feedback) are shown
+with their state — *not run yet*, *locked* until another check passes, or
+their PASS/FAIL results once they have answered. They are never pressed.
+
+**Trajectories - Required confirmations** is shown box by box with how many
+are ticked. Each box is the reviewer saying "I reviewed…", "I checked…", so,
+like Copperhead's "without AI assistance", it is never ticked for you.
+
+The catch's status line ends with what is still yours to do by hand: an
+empty upload, unticked confirmations, checks not yet run.
+
+As on Copperhead there is no separate Answers box; **Send answers to input**
+writes the template, with every question a fill can write.
+
+### Writing answers back
+
+| the page asks for | write | for example |
+|---|---|---|
+| Task Type, Analysis (the segments) | the wording | `"Feature"`, `"Open Flags"`, `"Suspected too easy"` |
+| the analysis choice | its wording, or the part before the bracket | `"Fixable"`, `"Valid-as-is"`, `"Open Flags"` |
+| text | the text | `"None found"` |
+| Comments for Reviewer | the text; a new line starts a new paragraph | `"First point.
+Second point."` |
+| a number | the number | `40` |
+
+Keys are the names a catch gives (`textarea-hard_parts_covered`,
+`multidimensionradio-segments-valid:Task Type`) or a question's wording
+(`"Hard Parts Covered"`, `"Task Type"`, `"Analysis"`), matched loosely as on
+Copperhead. The Analysis segment's options are the page's stored values, so
+the spoken wording is matched to them: *Open Flags* finds OpenFlags,
+*Suspected too easy* finds Easy, *Valid-as-is* finds Valid. The segment
+field's bare name works too and goes to whichever selector has the option
+given. Put **Task Type** first: the analysis question after it can depend on
+it. Answers go in the order written, and a question that is not on the page
+yet is waited for, and its section opened.
+
+**Comments for Reviewer** is a rich-text editor (TipTap), not a text box, so
+it is written the way the browser edits: one editing command per key, Enter
+for a new paragraph, with the same rhythm and corrected slips as any other
+field. **Paste per field** sends it a real paste event, which the editor
+splits into paragraphs. Afterwards the box is read back. If it does not say
+what was asked — the editor can turn a line typed as `- ` or `1. ` into a
+list — the status line says to check it.
+
+Not written, and named in the status line if an answer asks for them: the
+Final grading feedback box (filled in by the page), the confirmations, and
+the checks. Nothing is uploaded. **Submit, Skip and Next section are never
+pressed.** When the run ends, the status line repeats what is still yours to
+do — the upload, the confirmations, the checks.
+
+**Delay** (2–7 s, 5 s by default) is the wait after each answer, the same
+setting Copperhead uses. Text is **typed per key** by default.
+
 ## Notes on the page it drives
 
 - **Collapsed sections are expanded first.** Radix unmounts closed accordion
@@ -876,6 +976,7 @@ classic scripts sharing one global scope:
 | [rudder.js](content/rudder.js) | Rudder: the documents, the rating form, choosing ratings and ticking flags, and its fill |
 | [terminus.js](content/terminus.js) | Terminus-3rd: the feedback boxes, the failed quality checks, and the download button |
 | [copperhead.js](content/copperhead.js) | Copperhead: the task brief, uploads, notes, the review form, loose wording, and its fill |
+| [suitelife.js](content/suitelife.js) | Suite Life: the task facts, the Task Report as Markdown, the previous round's feedback, the uploads, the form (segments, checks, confirmations), and its fill, rich text included |
 | [main.js](content/main.js) | which project a page is, and the messages from the panel, looked up in `PAGE_PROJECTS` |
 
 **Panel side** — [panel/](panel/). Loaded by panel.html in this order:
@@ -887,6 +988,7 @@ classic scripts sharing one global scope:
 | [rudder.js](panel/rudder.js) | Rudder's, with the guidelines toggle |
 | [terminus.js](panel/terminus.js) | Terminus-3rd's — read only, so no fill |
 | [copperhead.js](panel/copperhead.js) | Copperhead's, with the Delay setting |
+| [suitelife.js](panel/suitelife.js) | Suite Life's — it uses the same Delay |
 | [main.js](panel/main.js) | the panel itself: tabs, the project chooser, Catch and Type, the per-tab session — it names no project |
 
 To add a project: a `content/<name>.js` that registers a reader (and a filler,
