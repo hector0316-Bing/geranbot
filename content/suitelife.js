@@ -771,40 +771,117 @@ async function slSetConfirmations(fieldEl, value, base) {
   return { ...r, unknown: [], note };
 }
 
-/* ---------- the checks, after the answers ----------
-   Static Checks first; Instruction Review stays locked until it has
-   answered. A check already answered is left as it is. A check needs the
-   corrected zip, so none is pressed while an upload box is empty. */
+/* ---------- the checks, alongside the answers ----------
+   Static Checks is pressed as the fill begins and runs while the answers
+   are typed. Once it has answered with every result a PASS, Instruction
+   Review - locked until then - is pressed, still alongside the typing. A
+   Static Checks that fails stops there: Instruction Review is not pressed.
+
+   Nothing here scrolls or takes focus, so the typing is not disturbed. The
+   fields are looked up afresh each time: a section shut by the page while
+   another is typed into takes its check out of the DOM for a while, and
+   that time is not counted against the wait. */
+
+const SL_CHECK_STEPS = [
+  { name: 'Static Checks', label: /static/i },
+  { name: 'Instruction Review', label: /instruction/i }
+];
+
+function slCheckField(step, index) {
+  const fields = slFields().filter((f) => slKind(f) === 'check');
+  return fields.find((f) => step.label.test(fieldLabel(f))) || fields[index] || null;
+}
 
 function slCheckButton(fieldEl) {
+  if (!fieldEl) return null;
   return slOwn(fieldEl, 'button[data-testid="feedback-check"]').find((b) => !b.disabled)
     || slOwn(fieldEl, 'button').find((b) => !b.disabled && !/clear feedback/i.test(buttonText(b)) && CHECK_BUTTON.test(buttonText(b)))
     || null;
 }
 
-async function slRunChecks({ timeout = 180000 } = {}) {
-  const fields = slQuestions().filter((q) => q.kind === 'check').map((q) => q.field);
-  const ran = [];
-  for (let i = 0; i < fields.length; i++) {
-    checkCancelled();
-    const field = fields[i];
-    const label = fieldLabel(field);
-    progress = { index: i + 1, total: fields.length, phase: 'checking', unit: 'check', text: `Waiting on ${label}…` };
-    if (checkFinished(field)) { ran.push({ label, outcome: 'already answered' }); continue; }
+function slCheckResults(fieldEl) {
+  return fieldEl ? checkPanels().filter((p) => p.field === fieldEl).map((p) => p.result) : [];
+}
 
-    field.scrollIntoView({ block: 'center' });
-    // The one before may have just answered; give the page a moment to
-    // unlock this one.
-    const btn = await until(() => slCheckButton(field), { timeout: 15000, step: 200 });
-    if (!btn) {
-      const lock = readSlCheck(field, { label })[0];
-      ran.push({ label, outcome: lock.waitsFor ? `locked - waits for ${lock.waitsFor}` : 'button disabled' });
-      continue;
+// A press as a pointer makes one, without moving the caret out of the box
+// being typed into.
+function slPress(btn) {
+  const at = { bubbles: true, cancelable: true, view: window, button: 0 };
+  btn.dispatchEvent(new PointerEvent('pointerdown', { ...at, pointerType: 'mouse', isPrimary: true }));
+  btn.dispatchEvent(new MouseEvent('mousedown', at));
+  btn.dispatchEvent(new PointerEvent('pointerup', { ...at, pointerType: 'mouse', isPrimary: true }));
+  btn.dispatchEvent(new MouseEvent('mouseup', at));
+  btn.click();
+}
+
+let slChecksHalt = false; // the fill the checks run beside has ended early
+
+// Wait on `fn`, counting only the time the check's field is on the page.
+async function slAwaitShown(find, fn, timeout) {
+  let spent = 0;
+  for (;;) {
+    checkCancelled();
+    if (slChecksHalt) throw new Error('the fill ended early');
+    const field = find();
+    const v = field ? fn(field) : null;
+    if (v) return v;
+    if (field && !document.hidden) spent += 250;
+    if (spent > timeout) return null;
+    await wait(250);
+  }
+}
+
+// One check: press it (clearing a failed answer first) and wait for its
+// answer. A check already passing is left as it is.
+async function slRunCheck(step, index, { timeout }) {
+  const find = () => slCheckField(step, index);
+  const label = step.name;
+  if (!await slAwaitShown(find, () => true, 60000)) return { label, outcome: 'not on the page' };
+
+  const before = find();
+  if (checkFinished(before)) {
+    const had = slCheckResults(before);
+    if (had.length && had.every((r) => r.passed)) return { label, outcome: 'already passing', results: had };
+    const clear = slOwn(before, 'button').find((b) => !b.disabled && /clear feedback/i.test(buttonText(b)));
+    if (clear) {
+      slPress(clear);
+      await slAwaitShown(find, (f) => !checkFinished(f), 10000);
     }
-    await wait(settleMs);
-    btn.click();
-    const left = await awaitChecks([{ field }], timeout);
-    ran.push({ label, outcome: left.length ? 'no answer yet' : 'answered' });
+  }
+
+  // Instruction Review unlocks a moment after Static Checks passes.
+  const btn = await slAwaitShown(find, (f) => slCheckButton(f), 60000);
+  if (!btn) {
+    const lock = readSlCheck(find(), { label })[0];
+    return { label, outcome: lock.waitsFor ? `locked - waits for ${lock.waitsFor}` : 'button disabled' };
+  }
+  slPress(btn);
+
+  const done = await slAwaitShown(find, (f) => checkFinished(f), timeout);
+  const results = slCheckResults(find());
+  return { label, outcome: done ? 'answered' : 'no answer yet', results };
+}
+
+// Both checks in turn; never throws, so the fill it runs beside is not cut
+// short by it. Stop still ends it.
+async function slChecksAlongside({ timeout = 300000 } = {}) {
+  const ran = [];
+  try {
+    for (let i = 0; i < SL_CHECK_STEPS.length; i++) {
+      const step = SL_CHECK_STEPS[i];
+      if (i > 0) {
+        const prev = ran[i - 1];
+        const passed = /answered|passing/.test(prev.outcome)
+          && prev.results?.length && prev.results.every((r) => r.passed);
+        if (!passed) {
+          ran.push({ label: step.name, outcome: `not pressed - ${prev.label} did not pass` });
+          continue;
+        }
+      }
+      ran.push(await slRunCheck(step, i, { timeout }));
+    }
+  } catch (e) {
+    ran.push({ label: 'Checks', outcome: cancelled ? 'stopped' : `stopped - ${e.message}` });
   }
   return ran;
 }
@@ -1225,9 +1302,11 @@ function slShortLabel(label) {
 // Answers are written in the order given, one question at a time, with the
 // Delay after each. Task Type first: the analysis question that follows it
 // can depend on it, and is waited for when its turn comes. Confirmations are
-// ticked when the answers say so. With runChecks on and the zip uploaded,
-// the checks are pressed at the end and waited for. Nothing is uploaded, and
-// Submit, Skip and Next section are never pressed.
+// ticked when the answers say so. With runChecks on, Static Checks is
+// pressed as the typing begins and runs beside it, then Instruction Review
+// once Static Checks has all passed; the run ends when both the answers and
+// the checks are done. Nothing is uploaded, and Submit, Skip and Next
+// section are never pressed.
 async function applySuiteLife(input, options = {}) {
   if (busy) throw new Error('Already typing. Press Stop first.');
 
@@ -1257,9 +1336,15 @@ async function applySuiteLife(input, options = {}) {
   let checks = null;
   let checksSkipped = null;
   let filled = 0;
+  let checkRun = null;
+  slChecksHalt = false;
 
   try {
     await expandEverything();
+
+    if (!runChecks) checksSkipped = 'turned off';
+    else if (!slQuestions().some((q) => q.kind === 'check')) checksSkipped = 'no checks on this page';
+    else checkRun = slChecksAlongside();
 
     for (let i = 0; i < rows.length; i++) {
       checkCancelled();
@@ -1312,12 +1397,19 @@ async function applySuiteLife(input, options = {}) {
       await pause(gap); // the Delay, before the next answer
     }
 
-    const empty = readSlUploads().filter((u) => !u.files.length);
-    if (!runChecks) checksSkipped = 'turned off';
-    else if (!slQuestions().some((q) => q.kind === 'check')) checksSkipped = 'no checks on this page';
-    else if (empty.length) checksSkipped = 'the corrected zip is not uploaded yet';
-    else checks = await slRunChecks();
+    if (checkRun) {
+      // The answers are in; the checks may still be on their way. A section
+      // the page shut while typing is opened again so they can be seen.
+      progress = { index: 0, total: 0, phase: 'checking', unit: 'check', text: 'Waiting on the checks…' };
+      if (!slCheckField(SL_CHECK_STEPS[0], 0)) await expandEverything();
+      checks = await checkRun;
+    }
   } finally {
+    if (checkRun && !checks) {
+      // The fill ended early: the checks end with it.
+      slChecksHalt = true;
+      checks = await checkRun;
+    }
     busy = false;
     progress = null;
     letSleep();

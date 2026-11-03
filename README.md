@@ -884,7 +884,7 @@ segment after a colon: `multidimensionradio-segments-valid:Analysis`.
 **Static Checks** and **Instruction Review** (Submission Feedback) are shown
 with their state — *not run yet*, *locked* until another check passes, or
 their PASS/FAIL results once they have answered. A catch never presses them;
-a fill can, at its end (see below).
+a fill can, alongside its typing (see below).
 
 **Trajectories - Required confirmations** is shown box by box with how many
 are ticked. Each box is the reviewer saying "I reviewed…", "I checked…", so
@@ -939,12 +939,17 @@ text as HTML too, so the lists, code and bold come through the same way.
 Afterwards the box is read back, words only, and the status line says if it
 does not match.
 
-**Then run Static Checks and Instruction Review** (on by default) presses
-the checks once every answer is in: Static Checks first, then Instruction
-Review once the page unlocks it, each waited for (up to three minutes), and
-their PASS/FAIL put in the status line. A check already answered is left as
-it is. They need the corrected zip, so while an upload box is empty they are
-not pressed — upload first, then fill.
+**Run Static Checks while typing, then Instruction Review once it all
+passes** (on by default). Static Checks is pressed as the fill begins and
+runs while the answers are typed. When it answers with every result a
+PASS, Instruction Review — locked until then — is pressed, still alongside
+the typing. If Static Checks fails, Instruction Review is not pressed. A
+check already passing is left as it is; a failed answer is cleared and asked
+again. The checks never scroll the page or take the caret, so the typing
+goes on undisturbed, and each is given up to five minutes on the page. The
+run ends when both the answers and the checks are done, with their PASS/FAIL
+in the status line. The checks judge the uploaded task, so upload the
+corrected zip before filling.
 
 Not written: the Final grading feedback box (filled in by the page) and the
 uploads — a key such as `corrected_zip` is reported as *upload by hand*.

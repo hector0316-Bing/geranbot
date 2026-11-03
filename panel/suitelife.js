@@ -14,7 +14,7 @@ const SL_KIND_NAME = {
   choice: 'pick one',
   flags: 'tick any that apply',
   confirmation: 'confirmations — true, or one statement per box',
-  check: 'check — pressed after the answers when the zip is up',
+  check: 'check — pressed alongside the answers',
   richtext: 'written answer, rich text',
   text: 'written answer',
   number: 'a number'
@@ -196,7 +196,7 @@ function suiteLifeApplyStatus(result) {
   const todo = slToDo(todoIn);
   if (todo.length) msg += `\n${todo.join('\n')}`;
 
-  const checksOk = (result.checks || []).every((c) => /answered/.test(c.outcome)
+  const checksOk = (result.checks || []).every((c) => /answered|passing/.test(c.outcome)
     && (c.results || []).every((r) => r.passed));
   const clean = result.filled + (result.uploadsAsked?.length || 0) === result.requested
     && !result.skippedFields.length
