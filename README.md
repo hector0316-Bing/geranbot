@@ -925,7 +925,8 @@ instruction.md box under Instructions). This holds when the JSON leaves the
 key out, lists only some boxes, or says `false`. Leave these boxes out of
 your JSON. A list in your own words that skips them is matched, in order,
 to the group's other boxes. The status line names the groups it ticked this
-way.
+way. The catch leaves these boxes out too: there is no LLM Policy group in
+it, and Instructions lists its other five boxes.
 
 The catch's status line ends with what is still yours to do by hand: an
 empty upload, unticked confirmations, checks not yet run.

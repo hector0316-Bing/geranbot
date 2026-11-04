@@ -432,7 +432,11 @@ function readSlField(fieldEl) {
     out.options = opts.map((o) => ({ value: o.value, text: o.text }));
     out.answer = opts.find((o) => o.checked)?.text || null;
   } else if (kind === 'flags' || kind === 'confirmation') {
-    const opts = slBoxOptions(fieldEl);
+    // The policy pledges are ticked on every fill, so they are not caught:
+    // a group made only of them - LLM Policy - is left out whole.
+    const opts = slBoxOptions(fieldEl)
+      .filter((o) => kind !== 'confirmation' || !slMustTick(fieldEl, o.text));
+    if (!opts.length && kind === 'confirmation') return [];
     out.options = opts.map((o) => ({ text: o.text }));
     out.answer = opts.filter((o) => o.checked).map((o) => o.text);
   } else if (kind === 'richtext') {
