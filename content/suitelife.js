@@ -22,8 +22,10 @@
    Nothing here is shared with Copperhead, though both are Snorkel review
    forms: a change for one never moves the other.
 
-   Only Submission has been seen. Review is recorded as its own stage and read
-   the same way until a sample shows what it carries of its own.
+   This file is the Submission stage. The Review stage - the same page with
+   the submission locked and a Reviewer Feedback section under it - is the
+   Suite Life Reviewer project, in slreview.js, which is built on what is
+   here: the brief, the report, the fields, the typing, the checks.
 
    Needs core.js. */
 
@@ -1560,7 +1562,8 @@ async function applySuiteLife(input, options = {}) {
 /* ---------- registration ---------- */
 
 PAGE_PROJECTS.suitelife = {
-  detect: () => (isSuiteLifePage() ? 'its Suite Life task upload' : null),
+  // A Review page is the Suite Life Reviewer's, not this one's.
+  detect: () => (isSuiteLifePage() && !isSlReviewPage() ? 'its Suite Life task upload' : null),
   read: readSuiteLife,
   apply: applySuiteLife,
   ping: () => ({

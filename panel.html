@@ -59,6 +59,12 @@
           the task facts, the Task Report, any previous-round feedback and the
           form, and types the answers back in, rich text included.</span>
       </button>
+      <button class="pick-card" type="button" data-project="slreview">
+        <span class="pick-name">Suite Life Reviewer</span>
+        <span class="pick-note">Snorkel coding-task review — Review. Catches the
+          submission as the submitter left it and the Reviewer Feedback
+          questions, and types the verdict, notes, tags, rating and time back in.</span>
+      </button>
     </div>
 
     <p id="pickHint" class="hint"></p>
@@ -75,9 +81,14 @@
       <p id="modeHint" class="hint"></p>
     </div>
 
-    <label class="check not-rudder not-terminus not-copperhead not-suitelife">
+    <label class="check not-rudder not-terminus not-copperhead not-suitelife not-slreview">
       <input type="checkbox" id="runChecks" checked>
       Run the feedback checks first
+    </label>
+
+    <label class="check only-slreview">
+      <input type="checkbox" id="slrChecksFirst" checked>
+      Press Static Checks and Instruction Review first, and catch their results
     </label>
 
     <div class="only-rudder">
@@ -245,6 +256,21 @@
       left to you; Submit is never pressed.
     </p>
 
+    <label class="check only-slreview">
+      <input type="checkbox" id="slrRunChecks" checked>
+      Run Static Checks as the answers start, then Instruction Review once it passes
+    </label>
+
+    <p class="hint only-slreview">
+      The verdict goes first, then the rest in the order written, waiting the
+      Delay after each one. <code>"verdict"</code> takes Accept, Needs Revision
+      or Reject; <code>"notes"</code> the text; <code>"requirements"</code>
+      <code>true</code> or a list; <code>"error_categories"</code> a list;
+      <code>"rebuttal"</code> a few words of the statement;
+      <code>"quality"</code> 1 to 5; <code>"review_minutes"</code> a number.
+      The submitter's choices are locked; Submit is never pressed.
+    </p>
+
     <button id="apply" class="primary">Type into page</button>
   </section>
 
@@ -269,5 +295,6 @@
 <script src="panel/terminus.js"></script>
 <script src="panel/copperhead.js"></script>
 <script src="panel/suitelife.js"></script>
+<script src="panel/slreview.js"></script>
 <script src="panel/main.js"></script>
 </html>

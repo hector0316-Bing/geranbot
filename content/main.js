@@ -8,14 +8,15 @@
    Needs core.js and the project files. */
 
 // Which project's page this is. Each is settled by something only it has:
-// Geranium's criteria list, Suite Life's task upload, Terminus's feedback
-// boxes, Copperhead's task brief and review sections, Rudder's rating
-// sections, then Geranium's "In this … project" blurb. The heading alone is
-// the last resort - Terminus is headed "Submission" as Geranium is, and a
-// Refinement page's first <h1> can be the "Rubric" inside its documents.
-// Suite Life goes before Terminus: its Task Report is free text that could
-// well mention a terminal bench.
-const DETECT_ORDER = ['geranium', 'suitelife', 'terminus', 'copperhead', 'rudder'];
+// Geranium's criteria list, Suite Life's task upload (its Review stage, with
+// a Reviewer Feedback section, is a project of its own and goes first),
+// Terminus's feedback boxes, Copperhead's task brief and review sections,
+// Rudder's rating sections, then Geranium's "In this … project" blurb. The
+// heading alone is the last resort - Terminus is headed "Submission" as
+// Geranium is, and a Refinement page's first <h1> can be the "Rubric" inside
+// its documents. Suite Life goes before Terminus: its Task Report is free
+// text that could well mention a terminal bench.
+const DETECT_ORDER = ['geranium', 'slreview', 'suitelife', 'terminus', 'copperhead', 'rudder'];
 
 function detectProject() {
   for (const name of DETECT_ORDER) {

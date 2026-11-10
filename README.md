@@ -2,10 +2,11 @@
 
 Chrome extension (MV3) that runs in the browser's **side panel**. It reads a
 task page into one copyable block, and writes an answer back into it one field
-at a time, at a human pace. Five projects are handled: **Geranium**'s criteria
+at a time, at a human pace. Six projects are handled: **Geranium**'s criteria
 and rubric pages, **Rudder**'s preference comparisons, **Terminus-3rd**'s
 Terminal Bench 3.0 tasks, which are only read, **Copperhead**'s asset and
-workflow validation reviews, and **Suite Life**'s coding-task reviews.
+workflow validation reviews, and **Suite Life**'s coding-task reviews, at the
+Submission stage and, as **Suite Life Reviewer**, at the Review stage.
 
 ## Install
 
@@ -22,7 +23,7 @@ the page scrolls. Drag its inner edge to resize. Needs Chrome 116 or newer.
 Nothing runs until you open the panel — the page script is injected on demand
 under `activeTab`, so the extension has no access to any other site.
 
-## Five projects
+## Six projects
 
 Before anything else the panel asks which project the task belongs to, and the
 answer holds for that tab:
@@ -40,10 +41,14 @@ answer holds for that tab:
 - **Suite Life** — Snorkel's review of a coding task delivered as a zip: its
   facts and Task Report on the left, a review form on the right.
   **Suite Life tasks**, near the end, is about those.
+- **Suite Life Reviewer** — the same task at its Review stage: the submission
+  as the submitter left it, locked, with a Reviewer Feedback section under it
+  to answer. **Suite Life Reviewer tasks**, near the end, is about those.
 
 The page usually says which it is — Geranium by its criteria list or its "In
 this refinery / prompt generation project" blurb, Suite Life by its "Suite
-Life task" upload, Terminus by its feedback boxes, Copperhead by its task brief (Task ID beside the application used) or
+Life task" upload and Suite Life Reviewer by the Reviewer Feedback section
+under it, Terminus by its feedback boxes, Copperhead by its task brief (Task ID beside the application used) or
 its "App and Asset Review" sections, Rudder by its "Rating Assessment" and "Overall preference" sections or
 its name in the heading — and whichever it looks like is marked **on this
 page** in the chooser, so the answer is normally a confirmation rather than a
@@ -849,8 +854,9 @@ reading and filling are its own, in [content/suitelife.js](content/suitelife.js)
 and [panel/suitelife.js](panel/suitelife.js); nothing in them is shared with
 Copperhead.
 
-Only **Submission** has been seen. A heading saying Review or Adjudication is
-recorded as that stage and read the same way.
+This section is the **Submission** stage. The **Review** stage — the same
+page with the submission locked and a Reviewer Feedback section under it — is
+a project of its own, **Suite Life Reviewer**, described in the next section.
 
 ### What a catch takes
 
@@ -1002,6 +1008,117 @@ confirmations, checks not run.
 **Delay** (2–7 s, 5 s by default) is the wait after each answer, the same
 setting Copperhead uses. Text is **typed per key** by default.
 
+## Suite Life Reviewer tasks
+
+A Suite Life task at its **Review** stage is the submitter's page over again —
+the task's facts and Task Report on the left, the whole submission form on the
+right — with one more section at the foot, **Reviewer Feedback**, which is the
+reviewer's own. The panel takes it as a project of its own, **Suite Life
+Reviewer**, in [content/slreview.js](content/slreview.js) and
+[panel/slreview.js](panel/slreview.js), built on Suite Life's reading and
+typing: the brief, the report, the fields, the rich-text editor and the checks
+are the same code, and this file adds what is locked, the quality scale and
+the reviewer's names. The page says which stage it is — a Reviewer Feedback
+section, or a heading reading Review, marks it as the reviewer's; a Submission
+page stays Suite Life's — and the wrong choice gets the usual mismatch line
+with the switch on it.
+
+### What a catch takes
+
+**Press Static Checks and Instruction Review first, and catch their results**
+(on by default) is pressed before anything is read: every check not yet
+answered is pressed — both at once, since on a Review page both buttons are
+live; one locked until another passes is pressed when it unlocks — and the
+catch waits for them all, up to five minutes, with the count shown as they
+answer. A check already showing results is kept as it is. Their answers lead
+the Content block, in a **Checks** part, and the status line gives each
+verdict; a check that did not answer in time is named so the page can be
+caught again once it shows.
+
+1. The **stage**, **Last saved at**, the **time left** and the UID, as on
+   Suite Life.
+2. **Final grading feedback (previous round)**, **task notes** and the
+   **Evaluation criteria** sidebar, when any holds anything. The rebuttal
+   comments the Acknowledgement question speaks of are task notes, and come
+   through there when the page has them.
+3. The **task facts**, every **upload** with what is in it, and the **Task
+   Report** as Markdown.
+4. **The submission**, section by section, as the submitter left it, every
+   answer in full. The submitter's choices — Task Type, Analysis, the
+   analysis question — and their confirmation lists are **locked** on this
+   page (the radios carry `disabled`, the boxes `aria-disabled`), and are
+   shown with their answer alone; a confirmation list shows how many of its
+   boxes are ticked and names any that are not. Their text boxes, the two
+   rich-text boxes and the two time fields stay **open**, and are shown with
+   their keys, since the Accept Notes guidance invites the reviewer to make
+   minor fixes themselves. Static Checks and Instruction Review are shown
+   with their verdicts here and their full results in the Checks part.
+5. **Reviewer Feedback**, question by question. Its questions are few and
+   fixed, so each answers to a short name of its own, whatever the page
+   calls its field:
+
+| name | the question | takes |
+|---|---|---|
+| `verdict` | What is your verdict for this Submission? | Accept, Needs Revision or Reject (stored as yes, needs_revision, no) |
+| `notes` | Accept Notes, Revision Notes or Rejection Notes — the label follows the verdict and the field name is a hash | text |
+| `requirements` | Please confirm that the task meets all the following requirements (after an Accept) | six boxes |
+| `error_categories` | Error Categories: Tag the issues you found… (after a Needs Revision) | nineteen tags |
+| `rebuttal` | Acknowledgement of Submitter Rebuttal | one of three statements |
+| `quality` | What is the overall quality of the submission? | 1 to 5, Lower Quality to Exceptional Quality |
+| `review_minutes` | How long (in minutes) did it take you to complete this review? | a number |
+
+The quality scale is five plain buttons with no role and no input behind
+them; the one chosen is read off its colouring (the rest keep the empty-cell
+grey), so a scale the page has restyled is reported as *check this came out
+right* rather than guessed at.
+
+The status line says how much of the submission is answered, the verdict so
+far, how many reviewer questions are answered, the checks' state, and which
+questions are still yours. **Send answers to input** writes the reviewer's
+questions by those names with whatever is already answered.
+
+### Writing answers back
+
+| the page asks for | write | for example |
+|---|---|---|
+| `verdict` | the wording, the stored value, or a plain word for it | `"Needs Revision"`, `"accept"`, `"no"`, `"send back"` |
+| `notes` | the text; new lines are kept | `"- instruction.md: …\n- verifier: …"` |
+| `requirements` | `true` for all six, or a list of those met | `true` |
+| `error_categories` | a list of tags, as the page words them or near enough | `["Test Coverage Issues", "Test <-> Instruction Misalignment"]` |
+| `rebuttal` | the statement, or a few words of it | `"No rebuttal comments available"`, `"does not change"`, `"revised"` |
+| `quality` | the point on the scale | `3` |
+| `review_minutes` | the number | `45` |
+
+Keys are the names above, their plain synonyms (`decision`,
+`accept_notes` / `revision_notes` / `rejection_notes`, `confirmations`,
+`categories` / `tags`, `acknowledgement`, `rating` / `score`, `time` /
+`minutes` / `review_time`), the page's field names
+(`radio-what_is_your_verdict_for_this_submission_`), or a question's wording,
+matched loosely as on Suite Life. **The verdict is answered first whatever the
+order**: the notes box and the list under it exist only once it is chosen,
+and they are waited for when their turn comes. The rest go in the order
+written, with the Delay after each.
+
+The submitter's open boxes can be written too, by their Suite Life keys —
+`hard_parts_covered`, `comments_for_reviewer`, `instructions_findings`, the
+time fields — and are typed the same way, Comments for Reviewer as rich text.
+A key naming one of their locked choices or confirmations is not written and
+the status line says so: *The submitter's, locked on this page*. Not written
+either: the Final grading feedback box and the uploads.
+
+**Run Static Checks as the answers start, then Instruction Review once it
+passes** (on by default) presses Static Checks as the run begins and lets it
+answer while the reviewer's answers are typed; Instruction Review follows once
+every Static Checks result is a PASS, as on Suite Life. A check already
+passing is left as it is, a failed one is cleared and asked again, and both
+land in the status line. The run ends when the answers and the checks are
+done.
+
+**Submit, Skip, Skip this task, Exit task and the section buttons are never
+pressed.** When the run ends, the status line repeats which reviewer questions
+are still unanswered. **Delay** is the same control Copperhead and Suite Life
+use; text is **typed per key** by default.
+
 ## Notes on the page it drives
 
 - **Collapsed sections are expanded first.** Radix unmounts closed accordion
@@ -1045,6 +1162,7 @@ classic scripts sharing one global scope:
 | [terminus.js](content/terminus.js) | Terminus-3rd: the feedback boxes, the failed quality checks, and the download button |
 | [copperhead.js](content/copperhead.js) | Copperhead: the task brief, uploads, notes, the review form, loose wording, and its fill |
 | [suitelife.js](content/suitelife.js) | Suite Life: the task facts, the Task Report as Markdown, the previous round's feedback, the uploads, the form (segments, checks, confirmations), and its fill, rich text included |
+| [slreview.js](content/slreview.js) | Suite Life Reviewer: the Review stage — the submission read with its locks, the Reviewer Feedback questions (verdict, notes, requirements or error categories, rebuttal, the quality scale, time) and their fill, built on suitelife.js |
 | [main.js](content/main.js) | which project a page is, and the messages from the panel, looked up in `PAGE_PROJECTS` |
 
 **Panel side** — [panel/](panel/). Loaded by panel.html in this order:
@@ -1057,6 +1175,7 @@ classic scripts sharing one global scope:
 | [terminus.js](panel/terminus.js) | Terminus-3rd's — read only, so no fill |
 | [copperhead.js](panel/copperhead.js) | Copperhead's, with the Delay setting |
 | [suitelife.js](panel/suitelife.js) | Suite Life's — it uses the same Delay |
+| [slreview.js](panel/slreview.js) | Suite Life Reviewer's — the submission and the reviewer's questions, the same Delay |
 | [main.js](panel/main.js) | the panel itself: tabs, the project chooser, Catch and Type, the per-tab session — it names no project |
 
 To add a project: a `content/<name>.js` that registers a reader (and a filler,
