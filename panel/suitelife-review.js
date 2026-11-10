@@ -1,12 +1,14 @@
-/* Criteria Catcher - side panel: Suite Life Reviewer.
+/* Criteria Catcher - side panel: Suite Life, the Reviewer tab.
 
    The Review stage of a Suite Life task. The Content block is the stage and
-   times, the previous round's grading feedback when there is one, the task's
-   facts, the uploads, the Task Report as Markdown, then the submission as
-   the submitter left it - every section, every answer, the checks' state -
-   and last the Reviewer Feedback questions, which are the ones a fill
-   writes. The reviewer's answers go back with the Delay between them, the
-   same control Copperhead and Suite Life use.
+   times, the checks' answers, the previous round's grading feedback when
+   there is one, the task's facts, the uploads, the Task Report as Markdown,
+   then the submission as the submitter left it - every section, every
+   answer - and last the Reviewer Feedback questions, which are the ones a
+   fill writes. The reviewer's answers go back with the Delay between them.
+
+   Nothing is registered here: panel/suitelife.js owns the project and hands
+   a Review catch or fill to what is below, by the tab.
 
    Needs panel/core.js and panel/suitelife.js, for the kind names and the
    note layout. */
@@ -218,14 +220,8 @@ function slReviewApplyStatus(result) {
   return { msg, clean };
 }
 
-/* ---------- registration ---------- */
-
-PROJECTS.slreview = {
-  name: 'Suite Life Reviewer',
-  catch: 'Catch review',
-  toInput: 'Send answers to input',
-  copied: 'Answers copied into the input box.',
-  placeholder: `Paste or upload answers like this:
+// The input template on the Reviewer tab.
+const SL_REVIEW_PLACEHOLDER = `Paste or upload answers like this:
 
 "answers": {
   "verdict": "Needs Revision",
@@ -242,30 +238,4 @@ whatever the order: the notes box and the lists appear once it is
 chosen. Keys are the names above, the page's field names, or a
 question's wording. The submitter's text boxes can be written too,
 by their Suite Life keys; their choices and confirmations are locked.
-Submit is never pressed.`,
-  // A review is a form a person fills in by hand, so it is typed out.
-  entry: 'type',
-
-  render: (data) => renderSlReview(data.content || {}),
-  toInputText: (data) => answersJson(data.answers),
-
-  catchStatus: slReviewCatchStatus,
-  catchOptions: () => ({ runChecks: $('slrChecksFirst').checked }),
-  applyOptions: () => ({ gap: Number($('delay').value), runChecks: $('slrRunChecks').checked }),
-  applyStatus: slReviewApplyStatus,
-  badge(res) {
-    const r = res.slreview;
-    return r
-      ? `Review · ${r.answered} of ${r.fields} answered`
-      : 'no Suite Life review found';
-  },
-  // The Delay is saved and restored by Copperhead's entry: it is one control.
-  saveState: () => ({ slrRunChecks: $('slrRunChecks').checked, slrChecksFirst: $('slrChecksFirst').checked }),
-  loadState(s) {
-    $('slrRunChecks').checked = s.slrRunChecks !== false;
-    $('slrChecksFirst').checked = s.slrChecksFirst !== false;
-  }
-};
-
-$('slrRunChecks').addEventListener('change', () => save());
-$('slrChecksFirst').addEventListener('change', () => save());
+Submit is never pressed.`;

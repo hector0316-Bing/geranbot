@@ -28,7 +28,7 @@ const PAGE_SCRIPTS = [
   'content/terminus.js',
   'content/copperhead.js',
   'content/suitelife.js',
-  'content/slreview.js',
+  'content/suitelife-review.js',
   'content/main.js'
 ];
 

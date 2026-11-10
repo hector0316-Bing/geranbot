@@ -24,10 +24,12 @@
 
    This file is the Submission stage. The Review stage - the same page with
    the submission locked and a Reviewer Feedback section under it - is the
-   Suite Life Reviewer project, in slreview.js, which is built on what is
-   here: the brief, the report, the fields, the typing, the checks.
+   project's Reviewer tab, in suitelife-review.js, built on what is here:
+   the brief, the report, the fields, the typing, the checks. The project is
+   registered at the foot of this file and hands each request to the stage
+   the panel's tab names, or failing that the one the page shows.
 
-   Needs core.js. */
+   Needs core.js; suitelife-review.js follows it. */
 
 /* ---------- the page ---------- */
 
@@ -1408,6 +1410,7 @@ async function applySuiteLife(input, options = {}) {
     .filter(([, v]) => v !== null && v !== undefined && v !== '');
   if (!rows.length) throw new Error('No answers to write - every field was left empty.');
   if (!isSuiteLifePage()) throw new Error('This does not look like a Suite Life task page.');
+  if (isSlReviewPage()) throw new Error('This is the Review page - switch the tab to Reviewer.');
 
   const base = Math.max(0, Number(options.speed ?? 200));
   const paste = options.entry === 'paste'; // typing is the default here
@@ -1561,14 +1564,24 @@ async function applySuiteLife(input, options = {}) {
 
 /* ---------- registration ---------- */
 
+// Which stage a request is for: the tab the panel chose, else the one the
+// page shows. The Review readers live in suitelife-review.js.
+function slStageFor(options) {
+  return options?.stage || (isSlReviewPage() ? 'review' : 'submission');
+}
+
 PAGE_PROJECTS.suitelife = {
-  // A Review page is the Suite Life Reviewer's, not this one's.
-  detect: () => (isSuiteLifePage() && !isSlReviewPage() ? 'its Suite Life task upload' : null),
-  read: readSuiteLife,
-  apply: applySuiteLife,
-  ping: () => ({
-    suitelife: isSuiteLifePage()
-      ? { stage: suiteLifeStage(), fields: slQuestions().filter((q) => SL_WRITABLE.has(q.kind)).length }
-      : null
-  })
+  detect: () => (isSuiteLifePage() ? 'its Suite Life task upload' : null),
+  read: (options) => (slStageFor(options) === 'review' ? readSlReview(options) : readSuiteLife(options)),
+  apply: (data, options) => (slStageFor(options) === 'review' ? applySlReview(data, options) : applySuiteLife(data, options)),
+  // The badge's facts, and which stage the page is so the tab can follow it.
+  ping: () => {
+    if (!isSuiteLifePage()) return { suitelife: null };
+    const out = { stage: suiteLifeStage(), fields: slQuestions().filter((q) => SL_WRITABLE.has(q.kind)).length };
+    if (isSlReviewPage()) {
+      out.stage = 'review';
+      out.review = slrPing();
+    }
+    return { suitelife: out };
+  }
 };

@@ -55,15 +55,10 @@
       </button>
       <button class="pick-card" type="button" data-project="suitelife">
         <span class="pick-name">Suite Life</span>
-        <span class="pick-note">Snorkel coding-task review — Submission. Catches
-          the task facts, the Task Report, any previous-round feedback and the
-          form, and types the answers back in, rich text included.</span>
-      </button>
-      <button class="pick-card" type="button" data-project="slreview">
-        <span class="pick-name">Suite Life Reviewer</span>
-        <span class="pick-note">Snorkel coding-task review — Review. Catches the
-          submission as the submitter left it and the Reviewer Feedback
-          questions, and types the verdict, notes, tags, rating and time back in.</span>
+        <span class="pick-note">Snorkel coding-task review — Submission and
+          Reviewer. Catches the task facts, the Task Report, the form and, on a
+          Review, the submission and the Reviewer Feedback questions, and types
+          the answers back in, rich text included.</span>
       </button>
     </div>
 
@@ -81,15 +76,23 @@
       <p id="modeHint" class="hint"></p>
     </div>
 
-    <label class="check not-rudder not-terminus not-copperhead not-suitelife not-slreview">
+    <label class="check not-rudder not-terminus not-copperhead not-suitelife">
       <input type="checkbox" id="runChecks" checked>
       Run the feedback checks first
     </label>
 
-    <label class="check only-slreview">
-      <input type="checkbox" id="slrChecksFirst" checked>
-      Press Static Checks and Instruction Review first, and catch their results
-    </label>
+    <div class="only-suitelife">
+      <div class="modes" role="radiogroup" aria-label="Stage">
+        <label><input type="radio" name="slStage" value="submission" checked><span>Submission</span></label>
+        <label><input type="radio" name="slStage" value="review"><span>Reviewer</span></label>
+      </div>
+      <p id="slStageHint" class="hint"></p>
+
+      <label class="check only-sl-review">
+        <input type="checkbox" id="slrChecksFirst" checked>
+        Press Static Checks and Instruction Review first, and catch their results
+      </label>
+    </div>
 
     <div class="only-rudder">
       <p id="stageHint" class="hint">The task, its notes and any answers already on it.</p>
@@ -242,12 +245,12 @@
       wording; put it after the answer that brings it in.
     </p>
 
-    <label class="check only-suitelife">
+    <label class="check only-suitelife only-sl-submission">
       <input type="checkbox" id="slRunChecks" checked>
       Run Static Checks once Files Changed (or, without it, Comments for Reviewer) is typed, then Instruction Review once it all passes
     </label>
 
-    <p class="hint only-suitelife">
+    <p class="hint only-suitelife only-sl-submission">
       Answered in the order written, waiting the Delay after each one. A choice
       takes its wording or the part before the bracket (<code>"Feature"</code>,
       <code>"Open Flags"</code>), text and numbers their value; confirmations
@@ -256,12 +259,12 @@
       left to you; Submit is never pressed.
     </p>
 
-    <label class="check only-slreview">
+    <label class="check only-suitelife only-sl-review">
       <input type="checkbox" id="slrRunChecks" checked>
       Run Static Checks as the answers start, then Instruction Review once it passes
     </label>
 
-    <p class="hint only-slreview">
+    <p class="hint only-suitelife only-sl-review">
       The verdict goes first, then the rest in the order written, waiting the
       Delay after each one. <code>"verdict"</code> takes Accept, Needs Revision
       or Reject; <code>"notes"</code> the text; <code>"requirements"</code>
@@ -295,6 +298,6 @@
 <script src="panel/terminus.js"></script>
 <script src="panel/copperhead.js"></script>
 <script src="panel/suitelife.js"></script>
-<script src="panel/slreview.js"></script>
+<script src="panel/suitelife-review.js"></script>
 <script src="panel/main.js"></script>
 </html>

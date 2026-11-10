@@ -1,13 +1,19 @@
 /* Criteria Catcher - side panel: Suite Life.
 
-   Snorkel's review of a coding task delivered as a zip. The Content block is
-   the stage and times, the previous round's grading feedback when there is
-   one, the task's facts, the uploads, the Task Report as Markdown, and the
-   form question by question - checks and confirmations included, marked as
-   the reviewer's own to do. Answers are typed back with the Delay between
-   them - the same Delay control Copperhead uses, so one setting serves both.
+   Snorkel's review of a coding task delivered as a zip, at two stages, with
+   a tab for each above the Catch button: Submission, which is this file,
+   and Reviewer, in panel/suitelife-review.js. The tab follows the page
+   until the user picks one by hand, and decides which stage a catch or fill
+   is for; a caught result is shown by the stage it was caught at.
 
-   Needs panel/core.js. */
+   On the Submission tab the Content block is the stage and times, the
+   previous round's grading feedback when there is one, the task's facts,
+   the uploads, the Task Report as Markdown, and the form question by
+   question - checks and confirmations included, marked as the reviewer's
+   own to do. Answers are typed back with the Delay between them - the same
+   Delay control Copperhead uses, so one setting serves both.
+
+   Needs panel/core.js; panel/suitelife-review.js follows it. */
 
 const SL_KIND_NAME = {
   segment: 'pick one',
@@ -212,14 +218,62 @@ function suiteLifeApplyStatus(result) {
   return { msg, clean };
 }
 
+/* ---------- the stage tab ----------
+   Submission or Reviewer. The page says which it is, and the tab follows
+   it until the user picks one by hand, as Geranium's page type does. */
+
+const slStageRadios = Array.from(document.querySelectorAll('input[name="slStage"]'));
+let slStageTouched = false; // once the user picks, stop following the page
+
+const SL_TAB_NAME = { submission: 'Submission', review: 'Reviewer' };
+
+function slStage() {
+  return slStageRadios.find((r) => r.checked)?.value || 'submission';
+}
+
+// The Input view's controls, the Catch button and the template follow the tab.
+function slSetStage(value) {
+  const stage = SL_TAB_NAME[value] ? value : 'submission';
+  for (const r of slStageRadios) r.checked = r.value === stage;
+  document.body.dataset.slStage = stage;
+  if (document.body.dataset.project === 'suitelife') {
+    $('catch').textContent = PROJECTS.suitelife.catch;
+    $('json').placeholder = PROJECTS.suitelife.placeholder;
+  }
+}
+
+for (const r of slStageRadios) {
+  r.addEventListener('change', () => {
+    slStageTouched = true;
+    slSetStage(r.value);
+    $('slStageHint').textContent = `Set to ${SL_TAB_NAME[r.value]} by hand.`;
+    save();
+  });
+}
+
+// The badge: the stage the page is at and how much is answered. Unless the
+// user has picked a tab, the tab moves to the stage the page shows.
+function suiteLifeBadge(res) {
+  const sl = res.suitelife;
+  if (!sl) return 'no Suite Life task found';
+  const found = sl.review ? 'review' : 'submission';
+  if (!slStageTouched) {
+    if (slStage() !== found) slSetStage(found);
+    $('slStageHint').textContent = `Detected from the page: ${SL_TAB_NAME[found]}.`;
+  } else if (slStage() !== found) {
+    $('slStageHint').textContent = `This page looks like ${SL_TAB_NAME[found] === 'Reviewer' ? 'a Review' : 'a Submission'} — the tab was set by hand.`;
+  }
+  return sl.review
+    ? `Review · ${sl.review.answered} of ${sl.review.fields} answered`
+    : `${SL_STAGE_NAME[sl.stage] || sl.stage} · ${sl.fields} question${sl.fields === 1 ? '' : 's'}`;
+}
+
+// A result caught on the Reviewer tab carries the Reviewer Feedback section.
+const slIsReviewCatch = (data) => !!data?.content?.review;
+
 /* ---------- registration ---------- */
 
-PROJECTS.suitelife = {
-  name: 'Suite Life',
-  catch: 'Catch task',
-  toInput: 'Send answers to input',
-  copied: 'Answers copied into the input box.',
-  placeholder: `Paste or upload answers like this:
+const SL_SUBMISSION_PLACEHOLDER = `Paste or upload answers like this:
 
 "answers": {
   "task_type": "Feature",
@@ -242,28 +296,50 @@ Keys are the field names from a catch, a question's own wording, or a
 short name made of its words. Confirmations take true, or one statement
 per box. "- " lines become lists in Comments for Reviewer.
 Answers go in the order written, with the Delay after each one, so
-put Task Type before the analysis question that follows it.`,
+put Task Type before the analysis question that follows it.`;
+
+PROJECTS.suitelife = {
+  name: 'Suite Life',
+  // The button and the template follow the tab.
+  get catch() { return slStage() === 'review' ? 'Catch review' : 'Catch task'; },
+  toInput: 'Send answers to input',
+  copied: 'Answers copied into the input box.',
+  get placeholder() { return slStage() === 'review' ? SL_REVIEW_PLACEHOLDER : SL_SUBMISSION_PLACEHOLDER; },
   // A review is a form a person fills in by hand, so it is typed out.
   entry: 'type',
 
-  render: (data) => renderSuiteLife(data.content || {}),
+  // A caught result is shown by the stage it was caught at, whatever the
+  // tab says now.
+  render: (data) => (slIsReviewCatch(data) ? renderSlReview(data.content || {}) : renderSuiteLife(data.content || {})),
   // No Answers box: every answer is already in the Content block.
   toInputText: (data) => answersJson(data.answers),
 
-  catchStatus: suiteLifeCatchStatus,
-  applyOptions: () => ({ gap: Number($('delay').value), runChecks: $('slRunChecks').checked }),
-  applyStatus: suiteLifeApplyStatus,
-  badge(res) {
-    const sl = res.suitelife;
-    return sl
-      ? `${SL_STAGE_NAME[sl.stage] || sl.stage} · ${sl.fields} question${sl.fields === 1 ? '' : 's'}`
-      : 'no Suite Life task found';
-  },
+  catchOptions: () => ({ stage: slStage(), runChecks: $('slrChecksFirst').checked }),
+  catchStatus: (data, meta) => (slIsReviewCatch(data) ? slReviewCatchStatus(data, meta) : suiteLifeCatchStatus(data, meta)),
+  applyOptions: () => ({
+    stage: slStage(),
+    gap: Number($('delay').value),
+    runChecks: slStage() === 'review' ? $('slrRunChecks').checked : $('slRunChecks').checked
+  }),
+  applyStatus: (result) => (result.stage === 'review' ? slReviewApplyStatus(result) : suiteLifeApplyStatus(result)),
+  badge: suiteLifeBadge,
   // The Delay is saved and restored by Copperhead's entry: it is one control.
-  saveState: () => ({ slRunChecks: $('slRunChecks').checked }),
+  saveState: () => ({
+    slStage: slStage(),
+    slRunChecks: $('slRunChecks').checked,
+    slrRunChecks: $('slrRunChecks').checked,
+    slrChecksFirst: $('slrChecksFirst').checked
+  }),
   loadState(s) {
+    slStageTouched = false;
     $('slRunChecks').checked = s.slRunChecks !== false;
+    $('slrRunChecks').checked = s.slrRunChecks !== false;
+    $('slrChecksFirst').checked = s.slrChecksFirst !== false;
+    slSetStage(s.slStage || 'submission');
+    $('slStageHint').textContent = '';
   }
 };
 
 $('slRunChecks').addEventListener('change', () => save());
+$('slrRunChecks').addEventListener('change', () => save());
+$('slrChecksFirst').addEventListener('change', () => save());

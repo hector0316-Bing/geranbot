@@ -2,11 +2,11 @@
 
 Chrome extension (MV3) that runs in the browser's **side panel**. It reads a
 task page into one copyable block, and writes an answer back into it one field
-at a time, at a human pace. Six projects are handled: **Geranium**'s criteria
+at a time, at a human pace. Five projects are handled: **Geranium**'s criteria
 and rubric pages, **Rudder**'s preference comparisons, **Terminus-3rd**'s
 Terminal Bench 3.0 tasks, which are only read, **Copperhead**'s asset and
-workflow validation reviews, and **Suite Life**'s coding-task reviews, at the
-Submission stage and, as **Suite Life Reviewer**, at the Review stage.
+workflow validation reviews, and **Suite Life**'s coding-task reviews, at
+both their Submission and their Review stage.
 
 ## Install
 
@@ -23,7 +23,7 @@ the page scrolls. Drag its inner edge to resize. Needs Chrome 116 or newer.
 Nothing runs until you open the panel — the page script is injected on demand
 under `activeTab`, so the extension has no access to any other site.
 
-## Six projects
+## Five projects
 
 Before anything else the panel asks which project the task belongs to, and the
 answer holds for that tab:
@@ -39,16 +39,13 @@ answer holds for that tab:
   asset is downloaded, opened and reviewed, then the workflow around it.
   **Copperhead tasks**, near the end, is about those.
 - **Suite Life** — Snorkel's review of a coding task delivered as a zip: its
-  facts and Task Report on the left, a review form on the right.
-  **Suite Life tasks**, near the end, is about those.
-- **Suite Life Reviewer** — the same task at its Review stage: the submission
-  as the submitter left it, locked, with a Reviewer Feedback section under it
-  to answer. **Suite Life Reviewer tasks**, near the end, is about those.
+  facts and Task Report on the left, a review form on the right. Two tabs,
+  **Submission** and **Reviewer**, one per stage of the task.
+  **Suite Life tasks** and **The Reviewer tab**, near the end, are about those.
 
 The page usually says which it is — Geranium by its criteria list or its "In
 this refinery / prompt generation project" blurb, Suite Life by its "Suite
-Life task" upload and Suite Life Reviewer by the Reviewer Feedback section
-under it, Terminus by its feedback boxes, Copperhead by its task brief (Task ID beside the application used) or
+Life task" upload, Terminus by its feedback boxes, Copperhead by its task brief (Task ID beside the application used) or
 its "App and Asset Review" sections, Rudder by its "Rating Assessment" and "Overall preference" sections or
 its name in the heading — and whichever it looks like is marked **on this
 page** in the chooser, so the answer is normally a confirmation rather than a
@@ -854,9 +851,14 @@ reading and filling are its own, in [content/suitelife.js](content/suitelife.js)
 and [panel/suitelife.js](panel/suitelife.js); nothing in them is shared with
 Copperhead.
 
-This section is the **Submission** stage. The **Review** stage — the same
-page with the submission locked and a Reviewer Feedback section under it — is
-a project of its own, **Suite Life Reviewer**, described in the next section.
+The task has two stages, and the panel a tab for each above the Catch
+button: **Submission** and **Reviewer**. The page says which it is — a Review
+page carries a Reviewer Feedback section under the locked submission — and
+the tab follows the page until you pick one by hand, as Geranium's page type
+does; the hint under the tabs says which the page looks like. The tab decides
+what a catch reads and what a fill writes, and changes the Catch button and
+the input template with it. The rest of this section is the **Submission**
+tab; **The Reviewer tab** follows.
 
 ### What a catch takes
 
@@ -1008,20 +1010,18 @@ confirmations, checks not run.
 **Delay** (2–7 s, 5 s by default) is the wait after each answer, the same
 setting Copperhead uses. Text is **typed per key** by default.
 
-## Suite Life Reviewer tasks
+## The Reviewer tab
 
 A Suite Life task at its **Review** stage is the submitter's page over again —
 the task's facts and Task Report on the left, the whole submission form on the
 right — with one more section at the foot, **Reviewer Feedback**, which is the
-reviewer's own. The panel takes it as a project of its own, **Suite Life
-Reviewer**, in [content/slreview.js](content/slreview.js) and
-[panel/slreview.js](panel/slreview.js), built on Suite Life's reading and
-typing: the brief, the report, the fields, the rich-text editor and the checks
-are the same code, and this file adds what is locked, the quality scale and
-the reviewer's names. The page says which stage it is — a Reviewer Feedback
-section, or a heading reading Review, marks it as the reviewer's; a Submission
-page stays Suite Life's — and the wrong choice gets the usual mismatch line
-with the switch on it.
+reviewer's own. The **Reviewer** tab of the Suite Life project reads and fills
+it, in [content/suitelife-review.js](content/suitelife-review.js) and
+[panel/suitelife-review.js](panel/suitelife-review.js), built on the
+Submission tab's code: the brief, the report, the fields, the rich-text editor
+and the checks are the same, and these files add what is locked, the quality
+scale and the reviewer's names. A fill on the wrong tab stops before writing
+anything and says which tab the page wants.
 
 ### What a catch takes
 
@@ -1162,7 +1162,7 @@ classic scripts sharing one global scope:
 | [terminus.js](content/terminus.js) | Terminus-3rd: the feedback boxes, the failed quality checks, and the download button |
 | [copperhead.js](content/copperhead.js) | Copperhead: the task brief, uploads, notes, the review form, loose wording, and its fill |
 | [suitelife.js](content/suitelife.js) | Suite Life: the task facts, the Task Report as Markdown, the previous round's feedback, the uploads, the form (segments, checks, confirmations), and its fill, rich text included |
-| [slreview.js](content/slreview.js) | Suite Life Reviewer: the Review stage — the submission read with its locks, the Reviewer Feedback questions (verdict, notes, requirements or error categories, rebuttal, the quality scale, time) and their fill, built on suitelife.js |
+| [suitelife-review.js](content/suitelife-review.js) | Suite Life's Reviewer tab: the Review stage — the submission read with its locks, the Reviewer Feedback questions (verdict, notes, requirements or error categories, rebuttal, the quality scale, time) and their fill, built on suitelife.js |
 | [main.js](content/main.js) | which project a page is, and the messages from the panel, looked up in `PAGE_PROJECTS` |
 
 **Panel side** — [panel/](panel/). Loaded by panel.html in this order:
@@ -1175,7 +1175,7 @@ classic scripts sharing one global scope:
 | [terminus.js](panel/terminus.js) | Terminus-3rd's — read only, so no fill |
 | [copperhead.js](panel/copperhead.js) | Copperhead's, with the Delay setting |
 | [suitelife.js](panel/suitelife.js) | Suite Life's — it uses the same Delay |
-| [slreview.js](panel/slreview.js) | Suite Life Reviewer's — the submission and the reviewer's questions, the same Delay |
+| [suitelife-review.js](panel/suitelife-review.js) | Suite Life's Reviewer tab — the submission and the reviewer's questions; suitelife.js owns the project and the tab |
 | [main.js](panel/main.js) | the panel itself: tabs, the project chooser, Catch and Type, the per-tab session — it names no project |
 
 To add a project: a `content/<name>.js` that registers a reader (and a filler,

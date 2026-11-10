@@ -532,16 +532,13 @@ body[data-project="suitelife"] .only-geranium,
 body[data-project="suitelife"] .only-rudder,
 body[data-project="suitelife"] .not-suitelife,
 body:not([data-project="suitelife"]) .only-suitelife,
-body[data-project="slreview"] .only-geranium,
-body[data-project="slreview"] .only-rudder,
-body[data-project="slreview"] .not-slreview,
-body:not([data-project="slreview"]) .only-slreview,
-/* Copperhead and both Suite Life stages wait a Delay after each answer; the
-   rest a Gap. */
+/* Suite Life's two tabs, Submission and Reviewer, each show their own. */
+body[data-sl-stage="review"] .only-sl-submission,
+body:not([data-sl-stage="review"]) .only-sl-review,
+/* Copperhead and Suite Life wait a Delay after each answer; the rest a Gap. */
 body[data-project="copperhead"] .not-delay,
 body[data-project="suitelife"] .not-delay,
-body[data-project="slreview"] .not-delay,
-body:not([data-project="copperhead"]):not([data-project="suitelife"]):not([data-project="slreview"]) .only-delay { display: none !important; }
+body:not([data-project="copperhead"]):not([data-project="suitelife"]) .only-delay { display: none !important; }
 
 .hint code {
   padding: 0 3px;

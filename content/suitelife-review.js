@@ -1,7 +1,7 @@
-/* Criteria Catcher - page side: Suite Life Reviewer.
+/* Criteria Catcher - page side: Suite Life, the Review stage.
 
-   The Review stage of a Suite Life task. The page is the submitter's page
-   over again - the task's facts and Task Report on the left, the whole
+   The Reviewer tab of the Suite Life project. The page is the submitter's
+   page over again - the task's facts and Task Report on the left, the whole
    submission form on the right - with one more section at the foot, Reviewer
    Feedback, which is the reviewer's own:
 
@@ -361,7 +361,7 @@ async function readSlReview(options = {}) {
   content.review = review.length === 1 ? review[0] : { name: 'Reviewer Feedback', fields: review.flatMap((s) => s.fields) };
   if (verdict) content.verdict = verdict;
 
-  const data = { project: 'slreview', stage: 'review' };
+  const data = { project: 'suitelife', stage: 'review' };
   if (uid) data.uid = uid;
   if (fileName) data.fileName = fileName;
   data.content = content;
@@ -370,7 +370,8 @@ async function readSlReview(options = {}) {
   return {
     data,
     meta: {
-      project: 'slreview',
+      project: 'suitelife',
+      stage: 'review',
       opened,
       fields: questions.length,
       answered: questions.filter((q) => slIsAnswered(q.answer)).length,
@@ -564,7 +565,7 @@ async function applySlReview(input, options = {}) {
   if (!rows.length) throw new Error('No answers to write - every field was left empty.');
   if (!isSlReviewPage()) {
     throw new Error(isSuiteLifePage()
-      ? 'This is a Suite Life submission page, not a review - switch to Suite Life.'
+      ? 'This is a Suite Life Submission page, not a Review - switch the tab to Submission.'
       : 'This does not look like a Suite Life review page.');
   }
   const vi = rows.findIndex(([k]) => slrIsVerdictKey(k));
@@ -676,7 +677,8 @@ async function applySlReview(input, options = {}) {
     .map((c) => c.label);
 
   return {
-    project: 'slreview',
+    project: 'suitelife',
+    stage: 'review',
     requested: rows.length,
     filled,
     ranInBackground: hiddenDuringRun,
@@ -694,18 +696,13 @@ async function applySlReview(input, options = {}) {
   };
 }
 
-/* ---------- registration ---------- */
-
-PAGE_PROJECTS.slreview = {
-  detect: () => (isSlReviewPage() ? 'its Reviewer Feedback section' : null),
-  read: readSlReview,
-  apply: applySlReview,
-  ping: () => {
-    if (!isSlReviewPage()) return { slreview: null };
-    const revSec = slrReviewSection();
-    const qs = revSec
-      ? slFields(revSec).flatMap((f) => slrReadField(f, true)).filter((q) => q.kind !== 'check' && q.kind !== 'readonly')
-      : [];
-    return { slreview: { fields: qs.length, answered: qs.filter((q) => slIsAnswered(q.answer)).length } };
-  }
-};
+// What the Suite Life badge says of the Reviewer Feedback section: how many
+// questions, how many answered. Registered through suitelife.js, which
+// hands a Review page to the readers here.
+function slrPing() {
+  const revSec = slrReviewSection();
+  const qs = revSec
+    ? slFields(revSec).flatMap((f) => slrReadField(f, true)).filter((q) => q.kind !== 'check' && q.kind !== 'readonly')
+    : [];
+  return { fields: qs.length, answered: qs.filter((q) => slIsAnswered(q.answer)).length };
+}
