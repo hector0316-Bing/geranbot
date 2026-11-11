@@ -1,7 +1,7 @@
 /* Criteria Catcher - side panel: Geranium.
 
    The criteria and rubric pages. The page type (Submission, Review,
-   Refinement) is chosen on the Catch tab, detected from the page until it is
+   Refinement) is chosen above Catch / Input, detected from the page until it is
    set by hand; the Content block leads with what says which task this is, then
    what it is waiting on; a fill types the criteria back in.
 

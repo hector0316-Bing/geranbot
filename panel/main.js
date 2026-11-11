@@ -100,6 +100,7 @@ function setProject(value) {
 
   $('viewProject').hidden = !!project;
   $('tabs').hidden = !project;
+  $('stages').hidden = !project;
   $('projectChip').hidden = !project;
   $('mismatch').hidden = true; // re-decided on the next reading of the page
 

@@ -18,6 +18,26 @@
       <span id="pageInfo" class="badge">checking…</span>
     </header>
 
+    <!-- The page stage sits above Catch / Input: it applies to both. -->
+    <div id="stages" hidden>
+      <div class="only-geranium">
+        <div class="modes" role="radiogroup" aria-label="Page type">
+          <label><input type="radio" name="mode" value="submission"><span>Submission</span></label>
+          <label><input type="radio" name="mode" value="review"><span>Review</span></label>
+          <label><input type="radio" name="mode" value="refinement"><span>Refinement</span></label>
+        </div>
+        <p id="modeHint" class="hint"></p>
+      </div>
+
+      <div class="only-suitelife">
+        <div class="modes" role="radiogroup" aria-label="Stage">
+          <label><input type="radio" name="slStage" value="submission" checked><span>Submission</span></label>
+          <label><input type="radio" name="slStage" value="review"><span>Reviewer</span></label>
+        </div>
+        <p id="slStageHint" class="hint"></p>
+      </div>
+    </div>
+
     <div id="tabs" class="tabs" role="tablist">
       <button id="tabCatch" class="tab" type="button" role="tab"
               aria-selected="true" aria-controls="viewCatch">Catch</button>
@@ -67,32 +87,15 @@
 
   <section id="viewCatch" class="view" role="tabpanel" aria-labelledby="tabCatch">
     <div class="catch-head">
-    <div class="only-geranium">
-      <div class="modes" role="radiogroup" aria-label="Page type">
-        <label><input type="radio" name="mode" value="submission"><span>Submission</span></label>
-        <label><input type="radio" name="mode" value="review"><span>Review</span></label>
-        <label><input type="radio" name="mode" value="refinement"><span>Refinement</span></label>
-      </div>
-      <p id="modeHint" class="hint"></p>
-    </div>
-
     <label class="check not-rudder not-terminus not-copperhead not-suitelife">
       <input type="checkbox" id="runChecks" checked>
       Run the feedback checks first
     </label>
 
-    <div class="only-suitelife">
-      <div class="modes" role="radiogroup" aria-label="Stage">
-        <label><input type="radio" name="slStage" value="submission" checked><span>Submission</span></label>
-        <label><input type="radio" name="slStage" value="review"><span>Reviewer</span></label>
-      </div>
-      <p id="slStageHint" class="hint"></p>
-
-      <label class="check only-sl-review">
-        <input type="checkbox" id="slrChecksFirst" checked>
-        Press Static Checks and Instruction Review first, and catch their results
-      </label>
-    </div>
+    <label class="check only-suitelife only-sl-review">
+      <input type="checkbox" id="slrChecksFirst" checked>
+      Press Static Checks and Instruction Review first, and catch their results
+    </label>
 
     <div class="only-rudder">
       <p id="stageHint" class="hint">The task, its notes and any answers already on it.</p>

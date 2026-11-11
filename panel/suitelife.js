@@ -1,7 +1,7 @@
 /* Criteria Catcher - side panel: Suite Life.
 
    Snorkel's review of a coding task delivered as a zip, at two stages, with
-   a tab for each above the Catch button: Submission, which is this file,
+   a tab for each above Catch / Input: Submission, which is this file,
    and Reviewer, in panel/suitelife-review.js. The tab follows the page
    until the user picks one by hand, and decides which stage a catch or fill
    is for; a caught result is shown by the stage it was caught at.
