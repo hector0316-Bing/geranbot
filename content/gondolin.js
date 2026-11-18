@@ -155,24 +155,23 @@ function gdReadCriterion(inst) {
 
 const gdWritten = (row) => !!(row.criterion || row.category || row.importance);
 
-/* ---------- the guide, the uploads, the quality feedback ---------- */
+/* ---------- the task, the uploads, the quality feedback ---------- */
 
-// The left panel: "Task 54" under its heading, then the guide, a heading and
-// a paragraph for each part of the work.
-function gdReadGuide() {
-  const out = [];
+// The left panel: "Task 54" under its "Task" heading. The guide below it - a
+// heading and a paragraph for each part of the work - is the same on every
+// task, so it is not caught.
+function gdReadTask() {
   for (const h of document.querySelectorAll(`${LEFT_PANEL} h3, ${LEFT_PANEL} h4`)) {
     const box = h.parentElement;
-    const title = oneLine(h.textContent);
-    if (!title || !box) continue;
+    if (!box || !/^task$/i.test(oneLine(h.textContent))) continue;
     const text = Array.from(box.children)
       .filter((el) => el !== h)
       .map((el) => blockText(el))
       .filter(Boolean)
       .join('\n');
-    out.push({ title, text: text || null });
+    return text || null;
   }
-  return out;
+  return null;
 }
 
 const GD_UPLOADS = ['starting_template', 'concept', 'ending_template'];
@@ -299,8 +298,7 @@ async function readGondolin(options = {}) {
     criteria: written.length ? criteria : []
   };
 
-  const guide = gdReadGuide();
-  const task = guide.find((g) => /^task$/i.test(g.title))?.text || null;
+  const task = gdReadTask();
   const notes = await gdReadNotes();
   const feedback = gdReadFeedback();
   const stage = gondolinStage();
@@ -318,7 +316,6 @@ async function readGondolin(options = {}) {
     const latest = notes.find((n) => n.latest);
     if (latest) content.latestNote = { title: latest.title, time: latest.time || null };
   }
-  content.guide = guide.filter((g) => !/^task$/i.test(g.title));
   content.metadata = {
     domain,
     subdomain,

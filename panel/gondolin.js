@@ -1,7 +1,7 @@
 /* Criteria Catcher - side panel: Gondolin.
 
-   Office template redesign tasks. The Content block is the task and its
-   guide, the metadata, the prompt, the uploads, the rubric and everything an
+   Office template redesign tasks. The Content block is the task number,
+   the metadata, the prompt, the uploads, the rubric and everything an
    answer may be chosen from - the subdomains of every domain included, since
    the page shows only the chosen domain's. The Answers box is what gets
    edited and written back.
@@ -36,8 +36,6 @@ function renderGondolin(c) {
       .map((n) => `[${n.title}${n.time ? ` — ${n.time}` : ''}${n.latest ? ', newest' : ''}]\n${n.text}`)
       .join('\n\n'));
   }
-
-  part('Guide', (c.guide || []).map((g) => `[${g.title}]\n${g.text || ''}`.trim()).join('\n\n'));
 
   const m = c.metadata || {};
   part('Metadata', [

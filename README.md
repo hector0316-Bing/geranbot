@@ -1132,8 +1132,9 @@ redesigned. The guide is on the left; the form on the right runs **Metadata**
 code is in [content/gondolin.js](content/gondolin.js) and
 [panel/gondolin.js](panel/gondolin.js). Only Submission has been seen.
 
-**Catch task** reads the task number, the UID, the time left, the guide, the
+**Catch task** reads the task number, the UID, the time left, the
 metadata, the prompt, which uploads are done, the rubric and any task notes.
+The guide on the left is the same on every task, so it is left out.
 The Content block ends with everything an answer may be chosen from — the
 page shows only the chosen domain's subdomains, so the whole table is kept in
 the code and handed out with every catch:
@@ -1235,7 +1236,7 @@ classic scripts sharing one global scope:
 | [copperhead.js](content/copperhead.js) | Copperhead: the task brief, uploads, notes, the review form, loose wording, and its fill |
 | [suitelife.js](content/suitelife.js) | Suite Life: the task facts, the Task Report as Markdown, the previous round's feedback, the uploads, the form (segments, checks, confirmations), and its fill, rich text included |
 | [suitelife-review.js](content/suitelife-review.js) | Suite Life's Reviewer tab: the Review stage — the submission read with its locks, the Reviewer Feedback questions (verdict, notes, requirements or error categories, rebuttal, the quality scale, time) and their fill, built on suitelife.js |
-| [gondolin.js](content/gondolin.js) | Gondolin: the guide, the metadata with its domain-to-subdomain table, the uploads, the quality check, the rubric list (add, delete, category, importance), and its fill |
+| [gondolin.js](content/gondolin.js) | Gondolin: the task number, the metadata with its domain-to-subdomain table, the uploads, the quality check, the rubric list (add, delete, category, importance), and its fill |
 | [main.js](content/main.js) | which project a page is, and the messages from the panel, looked up in `PAGE_PROJECTS` |
 
 **Panel side** — [panel/](panel/). Loaded by panel.html in this order:
