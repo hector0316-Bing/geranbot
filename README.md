@@ -2,11 +2,12 @@
 
 Chrome extension (MV3) that runs in the browser's **side panel**. It reads a
 task page into one copyable block, and writes an answer back into it one field
-at a time, at a human pace. Five projects are handled: **Geranium**'s criteria
+at a time, at a human pace. Six projects are handled: **Geranium**'s criteria
 and rubric pages, **Rudder**'s preference comparisons, **Terminus-3rd**'s
 Terminal Bench 3.0 tasks, which are only read, **Copperhead**'s asset and
-workflow validation reviews, and **Suite Life**'s coding-task reviews, at
-both their Submission and their Review stage.
+workflow validation reviews, **Suite Life**'s coding-task reviews, at
+both their Submission and their Review stage, and **Gondolin**'s Office
+template redesign tasks.
 
 ## Install
 
@@ -23,7 +24,7 @@ the page scrolls. Drag its inner edge to resize. Needs Chrome 116 or newer.
 Nothing runs until you open the panel — the page script is injected on demand
 under `activeTab`, so the extension has no access to any other site.
 
-## Five projects
+## Six projects
 
 Before anything else the panel asks which project the task belongs to, and the
 answer holds for that tab:
@@ -42,9 +43,12 @@ answer holds for that tab:
   facts and Task Report on the left, a review form on the right. Two tabs,
   **Submission** and **Reviewer**, one per stage of the task.
   **Suite Life tasks** and **The Reviewer tab**, near the end, are about those.
+- **Gondolin** — Office template redesign tasks: metadata, a prompt, three
+  uploads and a rubric of 15 to 25 criteria. **Gondolin tasks**, near the end,
+  is about those.
 
 The page usually says which it is — Geranium by its criteria list or its "In
-this refinery / prompt generation project" blurb, Suite Life by its "Suite
+this refinery / prompt generation project" blurb, Gondolin by its rubric criteria list, Suite Life by its "Suite
 Life task" upload, Terminus by its feedback boxes, Copperhead by its task brief (Task ID beside the application used) or
 its "App and Asset Review" sections, Rudder by its "Rating Assessment" and "Overall preference" sections or
 its name in the heading — and whichever it looks like is marked **on this
@@ -1119,6 +1123,74 @@ pressed.** When the run ends, the status line repeats which reviewer questions
 are still unanswered. **Delay** is the same control Copperhead and Suite Life
 use; text is **typed per key** by default.
 
+## Gondolin tasks
+
+A Gondolin task is a design datapoint: someone needs an Office template
+redesigned. The guide is on the left; the form on the right runs **Metadata**
+(Domain, Subdomains, Use Case, Change Type), the **Prompt**, three uploads
+(Starting Template, The Concept, Ending Template) and the **Rubric**. Its
+code is in [content/gondolin.js](content/gondolin.js) and
+[panel/gondolin.js](panel/gondolin.js). Only Submission has been seen.
+
+**Catch task** reads the task number, the UID, the time left, the guide, the
+metadata, the prompt, which uploads are done, the rubric and any task notes.
+The Content block ends with everything an answer may be chosen from — the
+page shows only the chosen domain's subdomains, so the whole table is kept in
+the code and handed out with every catch:
+
+| Domain | Subdomains |
+|---|---|
+| Finance and Accounting | Corporate finance, Investment banking, Accounting and audit, Insurance, Personal finance |
+| Consulting and Professional Services | Strategy consulting, Legal, Human resources, Real estate |
+| Technology | Product management, Software engineering, Startups, Sales |
+| Healthcare and Life Sciences | Clinical operations, Pharmaceuticals, Public health, Hospital administration |
+| Education and Research | K-12 teaching, Higher education, Academic research, Corporate training |
+| Marketing, Media, and Creative | Brand and advertising, Publishing, Fashion, Architecture and design, Events |
+| Retail, Hospitality, and Consumer | E-commerce, Restaurants and food service, Travel, Consumer goods |
+| Public Sector and Nonprofit | Government, Policy, Nonprofit fundraising, Community programs |
+
+With **Run the feedback checks first** on, a catch presses **Check prompt and
+rubric** when there is a prompt and at least one criterion and it has not
+answered yet, and waits up to three minutes for the answer. No sample of an
+answered check has been seen: it is read as pass/fail panels where it shows
+them, and otherwise as whatever text the field gains.
+
+The Answers box, and the Input tab, take this shape:
+
+```json
+"answers": {
+  "domain": "Healthcare and Life Sciences",
+  "subdomain": "Pharmaceuticals",
+  "use_case": "Quarterly pipeline review deck",
+  "change_type": ["Restyle", "Restructure"],
+  "prompt": "Our pipeline review deck looks dated…",
+  "criteria": [
+    { "criterion": "The title slide uses the navy brand color.",
+      "category": "Color", "importance": 3 }
+  ]
+}
+```
+
+- Anything left out, `null`, empty or an empty list is left alone on the
+  page, so a blank template can be sent straight back. A bare list is read as
+  the criteria on their own.
+- The **Domain** is chosen first and the **Subdomain** waited for, since the
+  page swaps the list in. A subdomain that belongs to another domain is
+  refused before anything is written; a subdomain on its own brings its
+  domain with it.
+- **Change Type** is stated in full: the ones named are ticked and the rest
+  unticked. Fewer than two is done, and said.
+- **Criteria** go by position. More than 25 is refused before anything is
+  written; fewer than 15 is written, and said. With **Add or delete rubric
+  criteria to match the JSON** on, spare sections are deleted and missing
+  ones added with **Add item**, never past 25.
+- `"category"` takes the wording on the page, loosely (`"imagery &
+  graphics"`); `"importance"` takes 1 to 3 or Minor, Important, Critical. As
+  on Geranium the criterion's number may stand as its key: `{ "1": "…" }`.
+- The three uploads are left to you, and Submit is never pressed.
+
+Text is **typed per key** by default, with the **Gap** after each field.
+
 ## Notes on the page it drives
 
 - **Collapsed sections are expanded first.** Radix unmounts closed accordion
@@ -1163,6 +1235,7 @@ classic scripts sharing one global scope:
 | [copperhead.js](content/copperhead.js) | Copperhead: the task brief, uploads, notes, the review form, loose wording, and its fill |
 | [suitelife.js](content/suitelife.js) | Suite Life: the task facts, the Task Report as Markdown, the previous round's feedback, the uploads, the form (segments, checks, confirmations), and its fill, rich text included |
 | [suitelife-review.js](content/suitelife-review.js) | Suite Life's Reviewer tab: the Review stage — the submission read with its locks, the Reviewer Feedback questions (verdict, notes, requirements or error categories, rebuttal, the quality scale, time) and their fill, built on suitelife.js |
+| [gondolin.js](content/gondolin.js) | Gondolin: the guide, the metadata with its domain-to-subdomain table, the uploads, the quality check, the rubric list (add, delete, category, importance), and its fill |
 | [main.js](content/main.js) | which project a page is, and the messages from the panel, looked up in `PAGE_PROJECTS` |
 
 **Panel side** — [panel/](panel/). Loaded by panel.html in this order:
@@ -1176,6 +1249,7 @@ classic scripts sharing one global scope:
 | [copperhead.js](panel/copperhead.js) | Copperhead's, with the Delay setting |
 | [suitelife.js](panel/suitelife.js) | Suite Life's — it uses the same Delay |
 | [suitelife-review.js](panel/suitelife-review.js) | Suite Life's Reviewer tab — the submission and the reviewer's questions; suitelife.js owns the project and the tab |
+| [gondolin.js](panel/gondolin.js) | Gondolin's — the Content block with the choices table, and the match-the-JSON toggle |
 | [main.js](panel/main.js) | the panel itself: tabs, the project chooser, Catch and Type, the per-tab session — it names no project |
 
 To add a project: a `content/<name>.js` that registers a reader (and a filler,

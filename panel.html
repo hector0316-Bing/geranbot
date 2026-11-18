@@ -80,6 +80,13 @@
           Review, the submission and the Reviewer Feedback questions, and types
           the answers back in, rich text included.</span>
       </button>
+      <button class="pick-card" type="button" data-project="gondolin">
+        <span class="pick-name">Gondolin</span>
+        <span class="pick-note">Office template redesign tasks — Submission.
+          Catches the guide, the metadata, the prompt and the rubric, and writes
+          them back: Domain, then its Subdomain, Use Case, Change Type, the
+          prompt, and 15 to 25 criteria with category and importance.</span>
+      </button>
     </div>
 
     <p id="pickHint" class="hint"></p>
@@ -248,6 +255,22 @@
       wording; put it after the answer that brings it in.
     </p>
 
+    <label class="check only-gondolin">
+      <input type="checkbox" id="gdMatch" checked>
+      Add or delete rubric criteria to match the JSON
+    </label>
+
+    <p class="hint only-gondolin">
+      <code>"domain"</code> goes first, then a <code>"subdomain"</code> of
+      that domain, <code>"use_case"</code>, <code>"change_type"</code> (a
+      list, at least two) and <code>"prompt"</code>, then
+      <code>"criteria"</code> in order: 15 to 25 rows of
+      <code>"criterion"</code>, <code>"category"</code> and
+      <code>"importance"</code> (1 to 3, or Minor, Important, Critical).
+      Anything left out is left alone. The three uploads are left to you;
+      Submit is never pressed.
+    </p>
+
     <label class="check only-suitelife only-sl-submission">
       <input type="checkbox" id="slRunChecks" checked>
       Run Static Checks once Files Changed (or, without it, Comments for Reviewer) is typed, then Instruction Review once it all passes
@@ -302,5 +325,6 @@
 <script src="panel/copperhead.js"></script>
 <script src="panel/suitelife.js"></script>
 <script src="panel/suitelife-review.js"></script>
+<script src="panel/gondolin.js"></script>
 <script src="panel/main.js"></script>
 </html>

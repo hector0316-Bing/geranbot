@@ -29,6 +29,7 @@ const PAGE_SCRIPTS = [
   'content/copperhead.js',
   'content/suitelife.js',
   'content/suitelife-review.js',
+  'content/gondolin.js',
   'content/main.js'
 ];
 
