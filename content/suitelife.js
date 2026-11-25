@@ -685,7 +685,7 @@ async function slSetChoice(fieldEl, seg, value, base) {
   // A choice re-renders the moment it is made, so what the click did is read
   // back off the page rather than off the node that was clicked.
   const chosen = () => slRadioOptions(fieldEl, seg).some((o) => o.checked && o.value === pick.value);
-  if (chosen()) return { ok: true, already: true };
+  if (chosen()) return unchanged({ ok: true, already: true });
 
   const target = pick.btn || pick.label;
   if (!target) return { ok: false, why: 'the option has nothing to click' };
@@ -1090,6 +1090,7 @@ async function slTypeRun(ed, text, base, slips) {
 // box makes no lists of its own, the lines go in as written.
 async function slTypeIntoEditor(ed, value, base) {
   const target = String(value ?? '').replace(/\r\n?/g, '\n');
+  if (slEditorSame(ed, target)) return unchanged({ typed: 0, corrections: 0, matches: true, same: true });
   ed.scrollIntoView({ block: 'center' });
   ed.focus({ preventScroll: true });
   await wait(base);
@@ -1177,6 +1178,7 @@ function slTextToHtml(text) {
 // lists, code and bold come through as they would from a document.
 async function slPasteIntoEditor(ed, value, base) {
   const target = String(value ?? '').replace(/\r\n?/g, '\n');
+  if (slEditorSame(ed, target)) return unchanged({ typed: 0, matches: true, same: true });
   ed.scrollIntoView({ block: 'center' });
   ed.focus({ preventScroll: true });
   await wait(base * 4);
@@ -1207,6 +1209,15 @@ async function slPasteIntoEditor(ed, value, base) {
 // backticks become code and spacing changes, none of which is a wrong answer.
 const slGist = (s) => String(s).replace(/^[ \t]*(?:[-*+]|\d+[.)])[ \t]+/gm, '')
   .replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
+
+// Whether the box already reads as the answer does, spacing aside: then it is
+// left alone. Stricter than the gist - a changed comma is a change - so a
+// list, which the box shows without its markers, is written again.
+function slEditorSame(ed, target) {
+  const flat = (s) => String(s).replace(/\s+/g, ' ').trim();
+  const want = flat(target);
+  return want !== '' && flat(slEditorText(ed)) === want;
+}
 
 // Whether the box says what was asked.
 async function slEditorHolds(ed, target, base) {
@@ -1502,7 +1513,7 @@ async function applySuiteLife(input, options = {}) {
       // The files changed are written up: the checks may begin.
       if (isTrigger(fieldEl, label)) startChecks();
 
-      await pause(gap); // the Delay, before the next answer
+      await gapPause(gap); // the Delay, before the next answer
     }
 
     // The pledges the answers left out are ticked now, a shut section

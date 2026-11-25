@@ -143,7 +143,7 @@ async function setChoice(fieldEl, value, base) {
   if (!pick) return { ok: false, why: `no option matching "${oneLine(value)}"` };
 
   const chosen = () => radioOptions(fieldEl).some((o) => o.checked && o.value === pick.value);
-  if (chosen()) return { ok: true, already: true };
+  if (chosen()) return unchanged({ ok: true, already: true });
 
   const target = pick.btn || pick.label;
   if (!target) return { ok: false, why: 'the option has nothing to click' };
@@ -460,7 +460,7 @@ async function applyRudder(input, options = {}) {
         filled++;
       }
 
-      await pause(gap); // settle before moving on to the next question
+      await gapPause(gap); // settle before moving on to the next question
     }
   } finally {
     busy = false;

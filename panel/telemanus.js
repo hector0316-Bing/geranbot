@@ -14,7 +14,10 @@ const tmIndent = (text, by = '  ') => String(text).split('\n').map((l) => by + l
 
 function tmRenderCheck(check) {
   if (!check) return null;
-  if (check.result) return check.result;
+  if (check.result) {
+    const verdict = check.passed === true ? 'PASSED\n' : check.passed === false ? 'FAILED\n' : '';
+    return verdict + check.result;
+  }
   return check.waitingOn ? `(not run - the page still wants: ${check.waitingOn})` : null;
 }
 
@@ -97,11 +100,53 @@ function telemanusCatchStatus(data, meta) {
   return { msg, kind: ok ? 'ok' : '' };
 }
 
+/* ---------- what the Check feedback buttons said ---------- */
+
+const tmVerdict = (f) => (f.passed === true ? 'PASSED' : f.passed === false ? 'FAILED'
+  : f.text ? 'NO VERDICT READ' : 'NO RESULT');
+
+// Every question's result, passed and failed alike, as one block of text.
+function tmFeedbackReport(feedback) {
+  const passed = feedback.filter((f) => f.passed === true).length;
+  const head = `Telemanus - Check feedback results: ${passed} of ${feedback.length} passed`;
+  const parts = feedback.map((f) => `${f.title} - ${tmVerdict(f)}\n${f.text || '(no result on the page)'}`);
+  return [head, ...parts].join('\n\n');
+}
+
+// The last fill's report, kept for the Copy button.
+let tmLastReport = '';
+
+function tmShowReport(report) {
+  tmLastReport = report;
+  $('tmCopyFeedback').hidden = !report;
+}
+
+$('tmCopyFeedback').addEventListener('click', async () => {
+  if (!tmLastReport) return setStatus('No feedback results yet - run a fill with Check feedback on.', 'err');
+  const ok = await copyText(tmLastReport);
+  setStatus(ok ? 'Feedback results copied to clipboard.' : 'Could not copy the feedback results.', ok ? 'ok' : 'err');
+});
+
 function telemanusApplyStatus(result) {
   const verb = $('entry').value === 'type' ? 'Typed' : 'Pasted';
   let msg = `${verb} ${result.filled} of ${result.requested} step${result.requested === 1 ? '' : 's'}`
     + ` across ${result.questions} question${result.questions === 1 ? '' : 's'}.`;
   if (result.checked.length) msg += `\nCheck feedback pressed on question ${result.checked.join(', ')}.`;
+
+  const feedback = result.feedback || [];
+  const allPassed = feedback.length > 0 && feedback.every((f) => f.passed === true);
+  if (feedback.length) {
+    const list = (rows) => rows.map((f) => f.n).join(', ');
+    const failed = feedback.filter((f) => f.passed === false);
+    const unread = feedback.filter((f) => f.passed === null);
+    if (allPassed) msg += `\nCheck feedback: all ${feedback.length} passed.`;
+    else {
+      msg += `\nCheck feedback: ${feedback.length - failed.length - unread.length} of ${feedback.length} passed.`;
+      if (failed.length) msg += ` Failed: question ${list(failed)}.`;
+      if (unread.length) msg += ` No verdict read: question ${list(unread)}.`;
+    }
+  }
+  tmShowReport(feedback.length ? tmFeedbackReport(feedback) : '');
 
   if (result.ranInBackground) {
     msg += '\nPart of this ran while the tab was behind, which Chrome slows down.';
@@ -115,7 +160,17 @@ function telemanusApplyStatus(result) {
 
   const clean = result.filled === result.requested && !result.warnings.length
     && !result.unknownKeys.length && !result.skippedFields.length && !result.refused.length
-    && !result.truncated.length;
+    && !result.truncated.length && (!feedback.length || allPassed);
+
+  // Not all passed: all of the results go to the clipboard, the passed ones
+  // with the failed. The line saying so follows once the copy has happened.
+  if (feedback.length && !allPassed) {
+    copyText(tmLastReport).then((ok) => {
+      setStatus(`${msg}${unchangedLine(result)}\n${ok
+        ? `All ${feedback.length} feedback results are on the clipboard.`
+        : 'Could not copy the feedback results - press "Copy feedback results".'}`, ok ? '' : 'err');
+    }, () => {});
+  }
   return { msg, clean };
 }
 

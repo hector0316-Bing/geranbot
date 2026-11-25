@@ -252,6 +252,13 @@ function parseInput(text) {
   JSON.parse(raw); // nothing worked: report the original complaint
 }
 
+// What a fill left alone because the page already said it.
+function unchangedLine(result) {
+  const n = result?.unchanged || 0;
+  return n ? `
+${n} value${n === 1 ? ' was' : 's were'} already the same on the page and left alone.` : '';
+}
+
 // navigator.clipboard is missing or throws outside a secure context, so keep the
 // old selection trick as a fallback rather than failing silently.
 async function copyText(text) {
@@ -461,7 +468,7 @@ applyBtn.addEventListener('click', async () => {
     });
 
     const { msg, clean } = p.applyStatus(result);
-    if (sessionTabId === ranOn) setStatus(msg, clean ? 'ok' : '');
+    if (sessionTabId === ranOn) setStatus(msg + unchangedLine(result), clean ? 'ok' : '');
   } catch (e) {
     if (sessionTabId === ranOn) setStatus(e.message, e.message === 'Stopped.' ? '' : 'err');
   } finally {

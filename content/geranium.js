@@ -892,7 +892,7 @@ async function apply(input, options = {}) {
             : await typeInto(ctl, value, base);
           if (r.truncated) truncated.push(`#${i + 1} "${key}"`);
         }
-        await pause(gap); // settle before moving to the next field
+        await gapPause(gap); // settle before moving to the next field
       }
       filled++;
     }

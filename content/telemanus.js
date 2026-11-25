@@ -17,7 +17,10 @@
    the task - the video link and the assets. The "Did you use the AI-generated
    proposal" question is never caught and never asked for: a fill answers it
    "No" itself, in its place in the order. And a question is finished by
-   pressing its "Check feedback" button, once the page lets it be pressed.
+   pressing its "Check feedback" button - only once its model check has run
+   all five times, since feedback pressed sooner is about something else -
+   and what the five came back with, passed or failed, goes out with the fill.
+   The model check and Check feedback are switched on and off separately.
 
    Submit is never pressed.
 
@@ -168,17 +171,21 @@ function tmResult(block) {
   copy.querySelector('[data-testid="block-field-header"]')?.remove();
   const title = copy.querySelector('h1, h2, h3');
   (title?.parentElement && title.parentElement !== copy ? title.parentElement : title)?.remove();
+  return tmLinesOf(copy) || null;
+}
+
+// The text of a copy with its controls taken out, a line per piece.
+function tmLinesOf(copy) {
   for (const el of copy.querySelectorAll('label, textarea, input, button, svg, [data-testid="prompting-attachments"]')) {
     el.remove();
   }
-
   const lines = [];
   const walker = document.createTreeWalker(copy, NodeFilter.SHOW_TEXT);
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
     const t = oneLine(node.nodeValue);
     if (t) lines.push(t);
   }
-  return lines.join('\n') || null;
+  return lines.join('\n');
 }
 
 const TM_BLOCKED = /^complete required fields first:?\s*/i;
@@ -195,7 +202,8 @@ function tmReadCheck(block) {
       .replace(/^,\s*/, '');
     return waitingOn ? { waitingOn } : null;
   }
-  return { result: text };
+  const said = tmReadFeedback(block);
+  return said && said.passed !== null ? { result: said.text, passed: said.passed } : { result: text };
 }
 
 /* ---------- the video ---------- */
@@ -521,7 +529,7 @@ async function tmSetChoice(find, value, base) {
   }
 
   const chosen = () => tmRadios(find()).some((o) => o.checked && o.value === pick.value && o.text === pick.text);
-  if (chosen()) return { ok: true, already: true };
+  if (chosen()) return unchanged({ ok: true, already: true });
 
   pick.btn.scrollIntoView({ block: 'center' });
   await wait(base * 6); // a beat to look at it before choosing, as a person would
@@ -562,6 +570,7 @@ async function tmPickFromCombo(combo, value, base) {
 // value is waited for among the choices not yet made.
 async function tmSetTaxonomy(find, values, base) {
   const used = new Set();
+  let acted = false;
   for (let i = 0; i < values.length; i++) {
     checkCancelled();
     const value = values[i];
@@ -572,6 +581,7 @@ async function tmSetTaxonomy(find, values, base) {
       const group = found.group;
       const r = await tmSetChoice(() => group?.isConnected ? group : find(), value, base);
       if (!r.ok) return { ok: false, why: `"${value}" - ${r.why}` };
+      if (!r.already) acted = true;
       // The group is re-rendered by the choice, so it is found again to mark.
       const now = tmRadios(find()).find((o) => o.checked && o.text === found.text);
       used.add(now?.group || group);
@@ -581,6 +591,7 @@ async function tmSetTaxonomy(find, values, base) {
         if (!await tmPickFromCombo(combo, value, base)) continue;
         used.add(combo);
         took = true;
+        acted = true;
         break;
       }
       if (!took) {
@@ -593,6 +604,8 @@ async function tmSetTaxonomy(find, values, base) {
     }
     await wait(settleMs);
   }
+  // One head already chosen does not make the whole taxonomy untouched.
+  if (acted) skippedWrite = false;
   return { ok: true };
 }
 
@@ -630,7 +643,8 @@ function tmMissingFields(waitingOn) {
 }
 
 const TM_MODEL_WAIT = 300000;   // five runs of a model over a video
-const TM_ENABLE_WAIT = 300000;  // the button waits on the model check too
+const TM_MODEL_QUIET = 8000;    // nothing new for this long: the runs are over
+const TM_ENABLE_WAIT = 60000;
 const TM_FEEDBACK_WAIT = 180000;
 
 function tmSendButton(block) {
@@ -639,70 +653,198 @@ function tmSendButton(block) {
     || null;
 }
 
-// "Check the model": the word "check" into its box, then the arrow. A check
-// the page already counts as answered is not sent a second time.
-async function tmRunModelCheck(block, base, paste) {
-  if (tmAnswered(block)) return { ok: true, already: true };
+// Something in the block is still turning: a spinner, or a button to stop it.
+const TM_BUSY = '.animate-spin, [aria-busy="true"], [role="progressbar"], '
+  + '[data-testid*="spinner" i], [data-testid*="loading" i]';
+
+function tmBusy(block) {
+  if (!block) return false;
+  if (block.querySelector(TM_BUSY)) return true;
+  return Array.from(block.querySelectorAll('button'))
+    .some((b) => /^(stop|cancel)\b/i.test(b.getAttribute('aria-label') || b.getAttribute('title') || buttonText(b)));
+}
+
+// Whether the Difficulty block still lists "Check the model" among what it
+// waits on - the page's own word that the check is not done. Null where the
+// block lists nothing, and so says nothing either way.
+function tmModelOwed(difficulty) {
+  const waitingOn = tmReadCheck(difficulty)?.waitingOn;
+  return waitingOn ? /check the model/i.test(waitingOn) : null;
+}
+
+// The model check is over when the page no longer counts it as owed, nothing
+// in its block is turning, and what the block says has stopped changing. It
+// runs five times, so a first answer is not the end: the block has to stay
+// quiet. `before` is what the block said ahead of the send - an answer has to
+// be something new - and is left out where the check was not sent from here.
+async function tmModelSettled(findModel, findDifficulty, { before, quiet = TM_MODEL_QUIET, timeout = TM_MODEL_WAIT } = {}) {
+  let last = null;
+  let since = Date.now();
+  const done = await tmWaitFor(() => {
+    const block = findModel();
+    if (!block) return true;
+    const now = tmResult(block) || '';
+    if (now !== last) { last = now; since = Date.now(); }
+    if (tmBusy(block)) { since = Date.now(); return false; }
+    if (tmModelOwed(findDifficulty())) return false;
+
+    const calm = Date.now() - since;
+    if (before !== undefined && now === before) {
+      // Nothing new to read: taken as done only on the page's word, and
+      // only after a long quiet.
+      return tmAnswered(block) && calm >= Math.max(quiet, 30000);
+    }
+    return calm >= quiet;
+  }, timeout, 500);
+  return !!done;
+}
+
+function tmPress(el) {
+  const at = { bubbles: true, cancelable: true, view: window };
+  for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup']) {
+    el.dispatchEvent(new (type.startsWith('pointer') ? PointerEvent : MouseEvent)(type, at));
+  }
+  el.click();
+}
+
+// "Check the model": the word "check" into its box, the arrow, and then the
+// wait for all five runs - whatever else the fill is or is not doing. A check
+// the page already counts as done is not sent a second time.
+async function tmRunModelCheck(findModel, findDifficulty, base, paste) {
+  const block = findModel();
+  if (!block) return { ok: false, why: 'no "Check the model" block' };
+
+  const owed = tmModelOwed(findDifficulty());
+  if (tmAnswered(block) && owed !== true) {
+    const settled = await tmModelSettled(findModel, findDifficulty);
+    return settled ? unchanged({ ok: true, already: true }) : { ok: true, waiting: true };
+  }
+
   const ctl = block.querySelector('textarea');
   if (!ctl) return { ok: false, why: 'no box to type "check" into' };
+  const before = tmResult(block) || '';
 
-  if (paste) await pasteInto(ctl, 'check', base);
-  else await typeInto(ctl, 'check', base);
+  if (oneLine(ctl.value).toLowerCase() !== 'check') {
+    if (paste) await pasteInto(ctl, 'check', base);
+    else await typeInto(ctl, 'check', base);
+  }
 
-  const send = await until(() => {
-    const b = tmSendButton(block);
+  const ready = () => {
+    const b = tmSendButton(findModel() || block);
     return b && !b.disabled ? b : null;
-  }, { timeout: 4000, step: 100 });
+  };
+  const send = await until(ready, { timeout: 4000, step: 100 });
   if (!send) return { ok: false, why: 'the arrow stayed disabled after "check" was typed' };
+
+  // Sent, when the page shows any sign of it: the box emptied or locked, the
+  // arrow gone or disabled, something turning, something new said, or the
+  // Difficulty block no longer waiting on it.
+  const sent = () => {
+    const now = findModel();
+    if (!now) return true;
+    const box = now.querySelector('textarea');
+    return !box || box.disabled || oneLine(box.value).toLowerCase() !== 'check'
+      || !ready() || tmBusy(now) || (tmResult(now) || '') !== before
+      || (owed === true && tmModelOwed(findDifficulty()) === false);
+  };
 
   send.scrollIntoView({ block: 'center' });
   await wait(base * 4);
   send.click();
+  if (!await tmWaitFor(sent, 5000, 150)) {
+    // A bare click can go unheard; press it the long way once.
+    const again = ready();
+    if (again) tmPress(again);
+    if (!await tmWaitFor(sent, 8000, 150)) {
+      return { ok: false, why: 'the arrow was pressed and the page showed no sign of sending' };
+    }
+  }
 
-  const done = await tmWaitFor(() => tmAnswered(block), TM_MODEL_WAIT);
-  return done ? { ok: true } : { ok: true, waiting: true };
+  const settled = await tmModelSettled(findModel, findDifficulty, { before });
+  return settled ? { ok: true } : { ok: true, waiting: true };
 }
 
-// The Difficulty check: its button stays disabled until every required field
-// of the question is in - the model check included - so it is waited for,
-// pressed, and its answer waited for in turn.
-async function tmRunFeedback(find, { enableWait = TM_ENABLE_WAIT } = {}) {
-  const button = () => find()?.querySelector(TM_CHECK)
-    || Array.from(find()?.querySelectorAll('button') || []).find((b) => CHECK_BUTTON.test(buttonText(b)))
-    || null;
-  if (!button()) return { ok: false, why: 'no Check feedback button' };
+// What a Check feedback block answered: pass/fail panels where the page
+// draws them, otherwise whatever it says, read for the word.
+function tmReadFeedback(block) {
+  if (!block) return null;
+  const panels = Array.from(block.querySelectorAll(RESULT_PANEL))
+    .filter((p) => !p.parentElement?.closest(RESULT_PANEL));
+  const parts = panels.map((p) => {
+    const text = tmLinesOf(p.cloneNode(true));
+    const word = text.split('\n').find((t) => /^(pass(ed)?|fail(ed)?|warn(ing)?|error)$/i.test(t));
+    return { text, passed: word ? /^pass/i.test(word) : /bg-success-subtle/.test(p.getAttribute('class') || '') };
+  }).filter((x) => x.text);
+  if (parts.length) {
+    return { passed: parts.every((x) => x.passed), text: parts.map((x) => x.text).join('\n\n') };
+  }
 
-  // What it waits on is written under it. The model check is worth waiting
-  // for; a field nobody filled in is not going to fill itself.
+  const text = tmResult(block);
+  if (!text || TM_BLOCKED.test(text)) return null;
+  const verdict = autoVerdict(text);
+  return { passed: verdict ? verdict === 'passed' : null, text };
+}
+
+// The Difficulty check. Its button stays disabled until every required field
+// of the question is in, and it judges what the model check found - so it is
+// pressed only once that check is over, and an answer left from an earlier
+// run is cleared first, being about something else.
+async function tmRunFeedback(find, findModel, { enableWait = TM_ENABLE_WAIT } = {}) {
+  const buttons = () => Array.from(find()?.querySelectorAll('button') || []);
+  const clearButton = () => buttons().find((b) => /clear feedback/i.test(buttonText(b))) || null;
+  const runButton = () => buttons().find((b) => CHECK_BUTTON.test(buttonText(b)))
+    || buttons().find((b) => b.matches(TM_CHECK) && !/clear/i.test(buttonText(b)))
+    || null;
+
+  const stale = clearButton();
+  if (stale && !stale.disabled) {
+    stale.scrollIntoView({ block: 'center' });
+    await wait(settleMs);
+    stale.click();
+    await tmWaitFor(() => !clearButton() && runButton(), 8000, 200);
+  }
+  if (!runButton()) return { ok: false, why: 'no Check feedback button' };
+
+  // What it waits on is written under it; a field nobody filled in is not
+  // going to fill itself.
   const started = Date.now();
   let missing = null;
   const ready = await tmWaitFor(() => {
-    const b = button();
+    const b = runButton();
     if (b && !b.disabled) return b;
     missing = tmMissingFields(tmReadCheck(find())?.waitingOn);
     return missing && Date.now() - started > 8000 ? 'missing' : null;
   }, enableWait);
   if (!ready || ready === 'missing') {
     const waitingOn = missing || tmReadCheck(find())?.waitingOn;
-    return { ok: false, why: waitingOn ? `not pressed, the page still wants: ${waitingOn}` : 'the button stayed disabled' };
+    return { ok: false, why: waitingOn ? `not pressed, the page still wants: ${waitingOn}` : 'not pressed, the button stayed disabled' };
   }
 
-  const before = tmResult(find());
-  ready.scrollIntoView({ block: 'center' });
-  await wait(settleMs);
-  ready.click();
+  // Enabled is not the same as the model being done with all five runs.
+  if (!await tmModelSettled(findModel, find, { quiet: 3000, timeout: TM_ENABLE_WAIT })) {
+    return { ok: false, why: 'not pressed, the model check was still running' };
+  }
+  const button = runButton();
+  if (!button || button.disabled) return { ok: false, why: 'not pressed, the button went back to disabled' };
 
-  // Answered when the block says something it did not say before, has stopped
-  // changing, and the button is no longer busy.
+  const before = tmResult(find());
+  button.scrollIntoView({ block: 'center' });
+  await wait(settleMs);
+  button.click();
+
+  // Answered when a result panel or "Clear feedback results" shows; failing
+  // those, when the block says something new and has stopped changing.
   let last = null;
   let steady = 0;
   const landed = await tmWaitFor(() => {
-    const now = tmResult(find());
-    const idle = !button()?.disabled;
+    const block = find();
+    const now = tmResult(block);
     const said = now && now !== before && !TM_BLOCKED.test(now);
+    const idle = !tmBusy(block) && !runButton()?.disabled;
     steady = said && idle && now === last ? steady + 1 : 0;
     last = now;
-    return steady >= 3 || (said && idle && tmAnswered(find()));
+    if ((block?.querySelector(RESULT_PANEL) || clearButton()) && idle) return steady >= 2;
+    return steady >= 8;
   }, TM_FEEDBACK_WAIT, 500);
   return landed ? { ok: true } : { ok: true, waiting: true };
 }
@@ -767,6 +909,8 @@ async function applyTelemanus(input, options = {}) {
   const truncated = [];
   const warnings = [];
   const checked = [];
+  const feedback = [];
+  const modelPending = new Set();
   let filled = 0;
   let done = 0;
 
@@ -792,7 +936,7 @@ async function applyTelemanus(input, options = {}) {
         } else {
           wrote(name, await tmWrite(tmTopBlock(TM_TOP[step.top]), a[step.top], base, paste));
         }
-        await pause(gap);
+        await gapPause(gap);
         continue;
       }
 
@@ -808,9 +952,13 @@ async function applyTelemanus(input, options = {}) {
         say('taxonomy');
         took(name, await tmSetTaxonomy(() => blockOf(i, 'taxonomy'), row.taxonomy, base));
       } else if (step.kind === 'model') {
-        say('asking the model, which runs five times');
-        const r = await tmRunModelCheck(blockOf(i, 'model'), base, paste);
-        if (r.waiting) warnings.push(`${at}: the model check had not answered after ${TM_MODEL_WAIT / 60000} minutes.`);
+        // Waited out here, whether or not Check feedback is pressed after.
+        say('asking the model and waiting for its five runs');
+        const r = await tmRunModelCheck(() => blockOf(i, 'model'), () => blockOf(i, 'difficulty'), base, paste);
+        if (r.waiting) {
+          modelPending.add(i);
+          warnings.push(`${at}: the model check had not finished after ${TM_MODEL_WAIT / 60000} minutes.`);
+        }
         took(`${at} "Check the model"`, r);
       } else if (step.kind === 'proposal') {
         // Never asked for: it is always "No", and it goes in here, in its
@@ -819,10 +967,12 @@ async function applyTelemanus(input, options = {}) {
         took(`${at} "AI-generated proposal"`, await tmSetChoice(() => blockOf(i, 'proposal'), 'No', base));
       } else if (step.kind === 'difficulty') {
         say('Check feedback');
-        // With the model check left to the person there is nothing to wait
-        // out: the button is ready or it is not.
-        const r = await tmRunFeedback(() => blockOf(i, 'difficulty'),
-          { enableWait: runModel ? TM_ENABLE_WAIT : 15000 });
+        // Never ahead of the model check: feedback on a check still running
+        // is feedback about something else.
+        const r = modelPending.has(i)
+          ? { ok: false, why: 'not pressed, the model check had not finished' }
+          : await tmRunFeedback(() => blockOf(i, 'difficulty'), () => blockOf(i, 'model'),
+            { enableWait: runModel ? TM_ENABLE_WAIT : 15000 });
         if (r.ok) checked.push(i + 1);
         if (r.waiting) warnings.push(`${at}: Check feedback was pressed and had not answered after ${TM_FEEDBACK_WAIT / 60000} minutes.`);
         took(`${at} "Check feedback"`, r);
@@ -830,7 +980,23 @@ async function applyTelemanus(input, options = {}) {
         say(/^[A-H]$/.test(step.kind) ? `choice ${step.kind}` : step.kind.replace(/_/g, ' '));
         wrote(name, await tmWrite(blockOf(i, step.kind), row[step.kind], base, paste));
       }
-      await pause(gap);
+      await gapPause(gap);
+    }
+
+    // What each Check feedback came back with, read once everything is in.
+    if (runFeedback) {
+      rows.forEach((row, i) => {
+        const block = row && blockOf(i, 'difficulty');
+        if (!block) return;
+        const said = tmReadFeedback(block);
+        feedback.push({
+          n: i + 1,
+          title: tmTitle(block) || `Question ${i + 1} Difficulty`,
+          pressed: checked.includes(i + 1),
+          passed: said ? said.passed : null,
+          text: said?.text || null
+        });
+      });
     }
   } finally {
     busy = false;
@@ -845,6 +1011,7 @@ async function applyTelemanus(input, options = {}) {
     filled,
     questions: rows.filter(Boolean).length,
     checked,
+    feedback,
     ranInBackground: hiddenDuringRun,
     skippedFields,
     truncated,

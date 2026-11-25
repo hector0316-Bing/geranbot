@@ -188,6 +188,20 @@ before a choice is clicked or a field is pasted into.
 0.5s, 1s, **2s (default)**, 3s, 4s or 5s — so the page has time to validate,
 autosave and settle between entries.
 
+The figure chosen is the middle of a range, not the length of every pause. A
+wait that is exactly two seconds every time is a machine's, so each pause is a
+random length within a second either side of it: **2s is anything from 1.00
+to 3.00 seconds, 4s from 3.00 to 5.00**. Below two seconds the range is half
+the gap either side (1s is 0.5 to 1.5). **Delay**, on the projects that use it
+instead, is randomised the same way.
+
+**An answer the page already holds is left alone**, on every project. Where a
+box already says exactly what the JSON says — line endings aside, to the
+letter — it is not cleared, retyped or pasted over; a choice, scale point or
+dropdown already on the wanted value is not clicked; and no pause follows,
+since nothing was done. The status line says how many values were left alone.
+A fill run twice therefore only writes what changed in between.
+
 Gap paces the whole run, not only the wait between fields. Opening a section,
 adding one, confirming a delete and waiting on a newly mounted field are all
 given a sixth of the gap to settle, floored at 120ms and capped at 0.9s — so 2s
@@ -1262,20 +1276,29 @@ Structure, Reasoning Steps and the time spent. Within a question:
 2. **The question, A to H, the correct letter and text** — typed or pasted.
    The choices may also come together under `"options"`.
 3. **Check the model** — `check` is typed into its box and the arrow pressed,
-   then the answer waited for, up to five minutes. Skipped where the page
-   already counts it answered. *Type "check" and press the arrow for Check the
-   model* turns this off.
+   and then all five runs are waited out, up to five minutes, before anything
+   else is touched: the check counts as over when the Difficulty block no
+   longer lists it, nothing in its block is turning, and what the block says
+   has been still for eight seconds. Skipped where the page already counts it
+   done. *Type "check", press the arrow for Check the model, and wait for its
+   five runs* turns this off — on its own, whatever the next box says.
 4. **The AI proposal question** — answered **No**, here, in its place. It is
    not in the JSON and anything sent for it is ignored.
-5. **Check feedback** — the Difficulty button is disabled until every required
-   field of the question is in, so it is waited for, pressed, and its answer
-   waited for before the next question starts. If what the page still wants is
-   a field nobody gave, it is not waited on: the run says which and moves on.
-   *Press Check feedback as each question is finished* turns this off.
+5. **Check feedback** — pressed only once the model check is over, since
+   feedback pressed sooner is about something else. A result left from an
+   earlier run is cleared first. If the model check did not finish, or the
+   page still wants a field nobody gave, the button is not pressed and the run
+   says why. *Press Check feedback once each question's model check is done*
+   turns this off — on its own, too.
 
 Steps 3 to 5 happen for every question the JSON gives anything for. A row left
 empty or `null` skips its question altogether. The Coherence Quality Check is
 left to you, and Submit is never pressed.
+
+When the run ends, every Check feedback result is read and the status line
+says whether all of them passed, and which questions failed. If any did not
+pass, all of the results — passed and failed, each under its question — are
+copied to the clipboard; **Copy feedback results** copies them again.
 
 ## Notes on the page it drives
 

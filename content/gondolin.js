@@ -484,7 +484,7 @@ async function gdSetChoice(find, value, base) {
   }
 
   const chosen = () => gdRadios(find()).some((o) => o.checked && o.value === pick.value);
-  if (chosen()) return { ok: true, already: true };
+  if (chosen()) return unchanged({ ok: true, already: true });
 
   pick.btn.scrollIntoView({ block: 'center' });
   await wait(base * 6); // a beat to look at it before choosing, as a person would
@@ -525,7 +525,7 @@ async function gdSetImportance(fieldEl, value, base) {
   const n = gdImportanceValue(value);
   const pick = gdScale(fieldEl).find((o) => o.value === n);
   if (!pick) return { ok: false, why: 'no such point on the scale' };
-  if (gdImportance(fieldEl) === n) return { ok: true, already: true };
+  if (gdImportance(fieldEl) === n) return unchanged({ ok: true, already: true });
   if (pick.btn.disabled) return { ok: false, why: 'the scale is locked' };
 
   pick.btn.scrollIntoView({ block: 'center' });
@@ -678,7 +678,7 @@ async function applyGondolin(input, options = {}) {
       } else {
         wrote(`"${key}"`, await gdWrite(gdField(key), a[key], base, paste));
       }
-      await pause(gap);
+      await gapPause(gap);
     }
 
     if (rows) {
@@ -712,17 +712,17 @@ async function applyGondolin(input, options = {}) {
           const r = await gdWrite(gdField('rubric_criterion', inst), row.criterion, base, paste);
           if (!r) { skippedFields.push(`${at} "criterion"`); ok = false; }
           else if (r.truncated) truncated.push(`${at} "criterion"`);
-          await pause(gap);
+          await gapPause(gap);
         }
         if (row.category !== undefined) {
           const r = await gdSetChoice(() => gdField('rubric_category', gdInstances()[i]), row.category, base);
           if (!r.ok) { refused.push(`${at} "category" - ${r.why}`); ok = false; }
-          await pause(gap);
+          await gapPause(gap);
         }
         if (row.importance !== undefined) {
           const r = await gdSetImportance(gdField('importance', gdInstances()[i]), row.importance, base);
           if (!r.ok) { refused.push(`${at} "importance" - ${r.why}`); ok = false; }
-          await pause(gap);
+          await gapPause(gap);
         }
         if (ok) filled++;
       }

@@ -172,7 +172,7 @@ async function chSetChoice(fieldEl, value, base) {
   if (!pick) return { ok: false, why: `no option matching "${oneLine(value)}"` };
 
   const chosen = () => chRadioOptions(fieldEl).some((o) => o.checked && o.value === pick.value);
-  if (chosen()) return { ok: true, already: true };
+  if (chosen()) return unchanged({ ok: true, already: true });
 
   const target = pick.btn || pick.label;
   if (!target) return { ok: false, why: 'the option has nothing to click' };
@@ -356,6 +356,8 @@ async function setSelect(fieldEl, value, base) {
 
   const trigger = selectTrigger(fieldEl);
   if (!trigger) return { ok: false, why: 'no dropdown to open' };
+  // Already showing it: not opened at all.
+  if (norm(readSelect(fieldEl).answer || '') === norm(value)) return unchanged({ ok: true, already: true });
   trigger.scrollIntoView({ block: 'center' });
   await wait(base * 6);
   trigger.click();
@@ -668,7 +670,7 @@ async function applyCopperhead(input, options = {}) {
         filled++;
       }
 
-      await pause(gap); // the Delay, before the next answer
+      await gapPause(gap); // the Delay, before the next answer
     }
   } finally {
     busy = false;

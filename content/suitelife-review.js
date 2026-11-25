@@ -537,7 +537,7 @@ async function slrSetRating(fieldEl, value, base) {
   const n = Number(String(value).trim().match(/\d+/)?.[0]);
   const pick = opts.find((o) => o.value === n) || slMatchOption(opts, value);
   if (!pick) return { ok: false, why: `no point on the scale matching "${oneLine(value)}"` };
-  if (pick.checked) return { ok: true, already: true };
+  if (pick.checked) return unchanged({ ok: true, already: true });
   if (pick.btn.disabled) return { ok: false, why: 'the scale is locked' };
 
   pick.btn.scrollIntoView({ block: 'center' });
@@ -645,7 +645,7 @@ async function applySlReview(input, options = {}) {
         filled++;
       }
 
-      await pause(gap); // the Delay, before the next answer
+      await gapPause(gap); // the Delay, before the next answer
     }
 
     if (checkRun) {

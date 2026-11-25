@@ -54,7 +54,12 @@ async function extract(options = {}) {
 async function fill(data, options = {}) {
   const { name, found } = projectFor(options);
   if (!found.apply) throw new Error(`${name} is only read from - there is nothing to type back in.`);
-  return found.apply(data, options);
+  unchangedWrites = 0;
+  skippedWrite = false;
+  const result = await found.apply(data, options);
+  // How many answers the page already held, and so were left alone.
+  if (result && typeof result === 'object') result.unchanged = unchangedWrites;
+  return result;
 }
 
 /* ---------- messaging ---------- */

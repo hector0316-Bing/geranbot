@@ -224,7 +224,7 @@
       </label>
       <label class="only-delay">
         Delay
-        <select id="delay" title="Pause after each answer before going on to the next">
+        <select id="delay" title="Pause after each answer before going on to the next. Each pause is a random length within a second either side: 2s is anything from 1 to 3 seconds">
           <option value="2000">2s</option>
           <option value="3000">3s</option>
           <option value="4000">4s</option>
@@ -235,7 +235,7 @@
       </label>
       <label class="not-delay">
         Gap
-        <select id="gap" title="Pause after each field, and how much room every other step in the run is given">
+        <select id="gap" title="Pause after each field, and how much room every other step in the run is given. Each pause is a random length within a second either side: 2s is anything from 1 to 3 seconds">
           <option value="500">0.5s</option>
           <option value="1000">1s</option>
           <option value="2000" selected>2s</option>
@@ -286,12 +286,13 @@
 
     <label class="check only-telemanus">
       <input type="checkbox" id="tmModel" checked>
-      Type "check" and press the arrow for Check the model
+      Type "check", press the arrow for Check the model, and wait for its five runs
     </label>
     <label class="check only-telemanus">
       <input type="checkbox" id="tmFeedback" checked>
-      Press Check feedback as each question is finished
+      Press Check feedback once each question's model check is done, and report pass or fail
     </label>
+    <button id="tmCopyFeedback" class="link only-telemanus" hidden>Copy feedback results</button>
 
     <p class="hint only-telemanus">
       <code>"group_type"</code> goes first, then each row of

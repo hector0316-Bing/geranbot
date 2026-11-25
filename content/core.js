@@ -172,6 +172,47 @@ async function pause(ms) {
   }
 }
 
+// The pause between one answer and the next. A gap that lasts exactly as
+// long every time is a machine's, so the figure chosen is the middle of a
+// range and each pause lands somewhere in it: a second either side - 2s is
+// anything from 1.00 to 3.00, 4s from 3.00 to 5.00 - and half the gap either
+// side where the gap is shorter than two seconds.
+//
+// An answer the page already held is not followed by a pause at all: nothing
+// was done, so there is nothing to wait after.
+async function gapPause(gap) {
+  if (skippedWrite) {
+    skippedWrite = false;
+    return;
+  }
+  const spread = Math.min(1000, gap / 2);
+  await pause(Math.round(gap + (Math.random() * 2 - 1) * spread));
+}
+
+/* ---------- answers the page already holds ----------
+   A field that already says what the JSON says is left alone: not cleared,
+   not retyped, not clicked. */
+
+let unchangedWrites = 0;   // how many were left alone in this run
+let skippedWrite = false;  // the last answer was one of them
+
+function unchanged(result) {
+  unchangedWrites++;
+  skippedWrite = true;
+  return result;
+}
+
+// Whether a text or number box holds exactly this. Line endings aside, it has
+// to be the same to the letter - a changed comma is a change.
+function fieldHolds(ctl, target) {
+  const now = String(ctl.value ?? '');
+  if (ctl.type === 'number') {
+    return now.trim() !== '' && String(target).trim() !== '' && Number(now) === Number(target);
+  }
+  const lines = (s) => s.replace(/\r\n?/g, '\n');
+  return lines(now) === lines(target);
+}
+
 /* ---------- page identity: heading and UID ---------- */
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
@@ -562,6 +603,10 @@ async function typeInto(ctl, value, base) {
   const text = value === null || value === undefined ? '' : String(value);
   const max = ctl.maxLength > 0 ? ctl.maxLength : Infinity;
   const target = text.length > max ? text.slice(0, max) : text;
+  if (fieldHolds(ctl, target)) {
+    return unchanged({ typed: 0, truncated: target.length < text.length, corrections: 0, same: true });
+  }
+  skippedWrite = false;
 
   ctl.scrollIntoView({ block: 'center' });
   ctl.focus({ preventScroll: true });
@@ -653,6 +698,10 @@ async function pasteInto(ctl, value, base) {
   const text = value === null || value === undefined ? '' : String(value);
   const max = ctl.maxLength > 0 ? ctl.maxLength : Infinity;
   const target = text.length > max ? text.slice(0, max) : text;
+  if (fieldHolds(ctl, target)) {
+    return unchanged({ typed: 0, truncated: target.length < text.length, same: true });
+  }
+  skippedWrite = false;
 
   ctl.scrollIntoView({ block: 'center' });
   ctl.focus({ preventScroll: true });
@@ -677,8 +726,10 @@ async function pasteInto(ctl, value, base) {
 function setDiscrete(ctl, value) {
   if (ctl.type === 'checkbox') {
     if (ctl.checked !== Boolean(value)) ctl.click();
+    else unchanged();
     return true;
   }
+  if (ctl.value === (value === null || value === undefined ? '' : String(value))) return unchanged(true);
   nativeSet(ctl, value === null || value === undefined ? '' : String(value));
   ctl.dispatchEvent(new Event('input', { bubbles: true }));
   ctl.dispatchEvent(new Event('change', { bubbles: true }));
