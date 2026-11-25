@@ -2,12 +2,12 @@
 
 Chrome extension (MV3) that runs in the browser's **side panel**. It reads a
 task page into one copyable block, and writes an answer back into it one field
-at a time, at a human pace. Six projects are handled: **Geranium**'s criteria
+at a time, at a human pace. Seven projects are handled: **Geranium**'s criteria
 and rubric pages, **Rudder**'s preference comparisons, **Terminus-3rd**'s
 Terminal Bench 3.0 tasks, which are only read, **Copperhead**'s asset and
 workflow validation reviews, **Suite Life**'s coding-task reviews, at
-both their Submission and their Review stage, and **Gondolin**'s Office
-template redesign tasks.
+both their Submission and their Review stage, **Gondolin**'s Office
+template redesign tasks, and **Telemanus**'s video question tasks.
 
 ## Install
 
@@ -24,7 +24,7 @@ the page scrolls. Drag its inner edge to resize. Needs Chrome 116 or newer.
 Nothing runs until you open the panel — the page script is injected on demand
 under `activeTab`, so the extension has no access to any other site.
 
-## Six projects
+## Seven projects
 
 Before anything else the panel asks which project the task belongs to, and the
 answer holds for that tab:
@@ -46,9 +46,12 @@ answer holds for that tab:
 - **Gondolin** — Office template redesign tasks: metadata, a prompt, three
   uploads and a rubric of 15 to 25 criteria. **Gondolin tasks**, near the end,
   is about those.
+- **Telemanus** — video question tasks: a video, an AI-generated idea per
+  question, and a form of five multiple-choice questions. **Telemanus tasks**,
+  near the end, is about those.
 
 The page usually says which it is — Geranium by its criteria list or its "In
-this refinery / prompt generation project" blurb, Gondolin by its rubric criteria list, Suite Life by its "Suite
+this refinery / prompt generation project" blurb, Gondolin by its rubric criteria list, Telemanus by its video player and question groups, Suite Life by its "Suite
 Life task" upload, Terminus by its feedback boxes, Copperhead by its task brief (Task ID beside the application used) or
 its "App and Asset Review" sections, Rudder by its "Rating Assessment" and "Overall preference" sections or
 its name in the heading — and whichever it looks like is marked **on this
@@ -1192,6 +1195,88 @@ The Answers box, and the Input tab, take this shape:
 
 Text is **typed per key** by default, with the **Gap** after each field.
 
+## Telemanus tasks
+
+A Telemanus task is a video and five multiple-choice questions written about
+it. The **Assets** sidebar on the left carries the Task Type and an
+AI-generated idea for each question; the form on the right runs **Group
+Type**, then for each question the video again and a group of fields, then
+**Group Design** and the time spent. Its code is in
+[content/telemanus.js](content/telemanus.js) and
+[panel/telemanus.js](panel/telemanus.js). Only the Submission page has been
+seen, and only its second page — the one with the form on it.
+
+The page is the newer *form-block* layout: a field is a block with a
+`data-block-id` and its title in a heading, and there are no `field-*`
+testids, so every block is found by what its heading says.
+
+### What a catch takes
+
+**Catch task** always reads the UID, the page indicator, the time left, the
+**video link** and the **assets**. The link is the signed `master.m3u8` the
+player is given: read from the `<video>` itself, or — where hls.js is feeding
+the player and its `src` is a `blob:` that names nothing — from the playlist
+among the page's own requests. The same video is repeated above each question,
+so the links are told apart and a task normally comes out with one; it is also
+put at the top of the JSON as `"video"`.
+
+**Include the submit form** decides the rest. Ticked, the catch also reads
+Group Type, each question (taxonomy, the question, choices A to H, the correct
+letter and text, whether the model check is done and what the Difficulty check
+said), Group Design, the time spent and the latest group difficulty result,
+and the **Answers** box holds the form ready to edit. Unticked, the catch is
+the task alone — link and assets — and **Send answers to input** writes an
+empty template.
+
+"Did you use the AI-generated proposal, or a modified version of it…" is never
+caught: not as an answer, and not in the list of fields a check is still
+waiting on.
+
+No check is pressed by a catch.
+
+### Writing answers back
+
+```json
+"answers": {
+  "group_type": "Coherence",
+  "questions": [
+    { "taxonomy": ["2. Temporal Dynamics", "…", "…"],
+      "question": "What happens right after…?",
+      "A": "…", "B": "…", "C": "…", "D": "…",
+      "E": "…", "F": "…", "G": "…", "H": "…",
+      "correct_letter": "C",
+      "correct_text": "…" }
+  ],
+  "group_structure": "…",
+  "reasoning_steps": 3,
+  "time_spent": 90
+}
+```
+
+Group Type goes first, then each question in the page's own order, then Group
+Structure, Reasoning Steps and the time spent. Within a question:
+
+1. **Taxonomy** — the Level, then the heads under it, each waited for once the
+   one before brings it in. A list, an object or `"a > b > c"`; a value
+   matches with or without its number (`"Temporal Dynamics"`).
+2. **The question, A to H, the correct letter and text** — typed or pasted.
+   The choices may also come together under `"options"`.
+3. **Check the model** — `check` is typed into its box and the arrow pressed,
+   then the answer waited for, up to five minutes. Skipped where the page
+   already counts it answered. *Type "check" and press the arrow for Check the
+   model* turns this off.
+4. **The AI proposal question** — answered **No**, here, in its place. It is
+   not in the JSON and anything sent for it is ignored.
+5. **Check feedback** — the Difficulty button is disabled until every required
+   field of the question is in, so it is waited for, pressed, and its answer
+   waited for before the next question starts. If what the page still wants is
+   a field nobody gave, it is not waited on: the run says which and moves on.
+   *Press Check feedback as each question is finished* turns this off.
+
+Steps 3 to 5 happen for every question the JSON gives anything for. A row left
+empty or `null` skips its question altogether. The Coherence Quality Check is
+left to you, and Submit is never pressed.
+
 ## Notes on the page it drives
 
 - **Collapsed sections are expanded first.** Radix unmounts closed accordion
@@ -1237,6 +1322,7 @@ classic scripts sharing one global scope:
 | [suitelife.js](content/suitelife.js) | Suite Life: the task facts, the Task Report as Markdown, the previous round's feedback, the uploads, the form (segments, checks, confirmations), and its fill, rich text included |
 | [suitelife-review.js](content/suitelife-review.js) | Suite Life's Reviewer tab: the Review stage — the submission read with its locks, the Reviewer Feedback questions (verdict, notes, requirements or error categories, rebuttal, the quality scale, time) and their fill, built on suitelife.js |
 | [gondolin.js](content/gondolin.js) | Gondolin: the task number, the metadata with its domain-to-subdomain table, the uploads, the quality check, the rubric list (add, delete, category, importance), and its fill |
+| [telemanus.js](content/telemanus.js) | Telemanus: the form-block layout, the video link, the assets, the question groups (taxonomy, choices, the model check, the AI proposal answered "No", the Difficulty check), and its fill |
 | [main.js](content/main.js) | which project a page is, and the messages from the panel, looked up in `PAGE_PROJECTS` |
 
 **Panel side** — [panel/](panel/). Loaded by panel.html in this order:
@@ -1251,6 +1337,7 @@ classic scripts sharing one global scope:
 | [suitelife.js](panel/suitelife.js) | Suite Life's — it uses the same Delay |
 | [suitelife-review.js](panel/suitelife-review.js) | Suite Life's Reviewer tab — the submission and the reviewer's questions; suitelife.js owns the project and the tab |
 | [gondolin.js](panel/gondolin.js) | Gondolin's — the Content block with the choices table, and the match-the-JSON toggle |
+| [telemanus.js](panel/telemanus.js) | Telemanus's — the Content block, the include-the-form toggle, and the two check toggles |
 | [main.js](panel/main.js) | the panel itself: tabs, the project chooser, Catch and Type, the per-tab session — it names no project |
 
 To add a project: a `content/<name>.js` that registers a reader (and a filler,

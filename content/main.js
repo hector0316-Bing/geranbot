@@ -15,7 +15,9 @@
 // is headed "Submission" as Geranium is, and a Refinement page's first <h1>
 // can be the "Rubric" inside its documents. Suite Life goes before Terminus:
 // its Task Report is free text that could well mention a terminal bench.
-const DETECT_ORDER = ['geranium', 'gondolin', 'suitelife', 'terminus', 'copperhead', 'rudder'];
+// Telemanus is the one page built of form blocks, with a video player in it;
+// nothing the others look for exists there, so where it stands does not matter.
+const DETECT_ORDER = ['geranium', 'gondolin', 'suitelife', 'terminus', 'copperhead', 'rudder', 'telemanus'];
 
 function detectProject() {
   for (const name of DETECT_ORDER) {

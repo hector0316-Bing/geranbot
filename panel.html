@@ -87,6 +87,14 @@
           them back: Domain, then its Subdomain, Use Case, Change Type, the
           prompt, and 15 to 25 criteria with category and importance.</span>
       </button>
+      <button class="pick-card" type="button" data-project="telemanus">
+        <span class="pick-name">Telemanus</span>
+        <span class="pick-note">Video question tasks — Submission. Catches the
+          video link and the assets, with or without the submit form, and
+          writes five questions back: taxonomy, question, choices A to H and
+          the correct answer, then "Check the model", "No" to the AI proposal
+          and Check feedback.</span>
+      </button>
     </div>
 
     <p id="pickHint" class="hint"></p>
@@ -94,7 +102,7 @@
 
   <section id="viewCatch" class="view" role="tabpanel" aria-labelledby="tabCatch">
     <div class="catch-head">
-    <label class="check not-rudder not-terminus not-copperhead not-suitelife">
+    <label class="check not-rudder not-terminus not-copperhead not-suitelife not-telemanus">
       <input type="checkbox" id="runChecks" checked>
       Run the feedback checks first
     </label>
@@ -102,6 +110,11 @@
     <label class="check only-suitelife only-sl-review">
       <input type="checkbox" id="slrChecksFirst" checked>
       Press Static Checks and Instruction Review first, and catch their results
+    </label>
+
+    <label class="check only-telemanus">
+      <input type="checkbox" id="tmForm" checked>
+      Include the submit form
     </label>
 
     <div class="only-rudder">
@@ -271,6 +284,27 @@
       Submit is never pressed.
     </p>
 
+    <label class="check only-telemanus">
+      <input type="checkbox" id="tmModel" checked>
+      Type "check" and press the arrow for Check the model
+    </label>
+    <label class="check only-telemanus">
+      <input type="checkbox" id="tmFeedback" checked>
+      Press Check feedback as each question is finished
+    </label>
+
+    <p class="hint only-telemanus">
+      <code>"group_type"</code> goes first, then each row of
+      <code>"questions"</code> in the page's own order:
+      <code>"taxonomy"</code> (the Level, then the heads under it),
+      <code>"question"</code>, <code>"A"</code> to <code>"H"</code>,
+      <code>"correct_letter"</code> and <code>"correct_text"</code>. The AI
+      proposal question is not in the JSON: it is answered <code>No</code>
+      when the run reaches it. Then <code>"group_structure"</code>,
+      <code>"reasoning_steps"</code> and <code>"time_spent"</code>. Anything
+      left out is left alone; Submit is never pressed.
+    </p>
+
     <label class="check only-suitelife only-sl-submission">
       <input type="checkbox" id="slRunChecks" checked>
       Run Static Checks once Files Changed (or, without it, Comments for Reviewer) is typed, then Instruction Review once it all passes
@@ -326,5 +360,6 @@
 <script src="panel/suitelife.js"></script>
 <script src="panel/suitelife-review.js"></script>
 <script src="panel/gondolin.js"></script>
+<script src="panel/telemanus.js"></script>
 <script src="panel/main.js"></script>
 </html>

@@ -30,6 +30,7 @@ const PAGE_SCRIPTS = [
   'content/suitelife.js',
   'content/suitelife-review.js',
   'content/gondolin.js',
+  'content/telemanus.js',
   'content/main.js'
 ];
 
