@@ -1234,6 +1234,16 @@ among the page's own requests. The same video is repeated above each question,
 so the links are told apart and a task normally comes out with one; it is also
 put at the top of the JSON as `"video"`.
 
+A task **sent back for revision** has a **Task overview** section under the
+assets, with an **Eval feedback** tab (what the automatic evaluation said,
+dated, ending in its "Do you disagree with the automated feedback?" box) and a
+**Reviewer feedback** tab. Both are always caught, whichever tab is showing,
+and come out as `content.feedback` — a list of `{ title, notes }`, each note
+with its `time`, `text` and any `asks` — and as a part each in the Content
+block, right after the assets. A tab with nothing in it ("No notes available")
+is listed with no notes. A first-pass task has no such section and no
+`feedback` key.
+
 **Include the submit form** decides the rest. Ticked, the catch also reads
 Group Type, each question (taxonomy, the question, choices A to H, the correct
 letter and text, whether the model check is done and what the Difficulty check

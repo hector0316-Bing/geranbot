@@ -13,6 +13,10 @@
    a data-block-id and its title in a heading, with no field-* testids to go
    by, so a block is found by what its heading says.
 
+   A task sent back for revision adds a "Task overview" section under the
+   assets, with what the automatic evaluation and the reviewer said, each in
+   a tab of its own; both are caught with the task, form or no form.
+
    Three things are its own. The catch can leave the form out and take only
    the task - the video link and the assets. The "Did you use the AI-generated
    proposal" question is never caught and never asked for: a fill answers it
@@ -291,6 +295,114 @@ function tmReadAssets() {
   return out;
 }
 
+/* ---------- the feedback on a task sent back ---------- */
+
+// A task that comes back for revision carries a "Task overview" section under
+// the assets: a tab of what the automatic evaluation said and a tab of what
+// the reviewer said. A tab's panel is dated and holds the feedback as written,
+// and the automatic one ends with a box to tick - "Do you disagree with the
+// automated feedback?" - which is a question, not feedback.
+const TM_OVERVIEW = '[data-testid="form-blocks-sidebar-section-feedback"]';
+const TM_NOTE_BODY = '[class*="whitespace-pre-line"], [data-testid="rich-doc-rendered"]';
+const TM_NO_NOTES = /^no (notes?|feedback|comments?)\b[^.]*$/i;
+
+// A plain-text body keeps its line breaks in the text itself, and shows them
+// only by its styling - which a panel that is hidden does not have, so the
+// lines are taken from the text rather than from how it is laid out.
+function tmNoteText(el) {
+  if (el.childElementCount) return blockText(el);
+  return (el.textContent || '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/ ?\n ?/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+// The notes in one panel, in the order they stand: each a body, under the
+// date last seen above it, with the boxes that follow it.
+function tmPanelNotes(panel) {
+  const notes = [];
+  let time = null;
+  let note = null;
+  const start = (text) => {
+    note = time ? { time, text } : { text };
+    notes.push(note);
+  };
+  for (const el of panel.querySelectorAll(`p, ${TM_NOTE_BODY}, [role="checkbox"]`)) {
+    if (el.getAttribute('role') === 'checkbox') {
+      const question = oneLine(el.textContent) || textOfMarkup(el.getAttribute('aria-label'));
+      if (!question) continue;
+      if (!note) start(null);
+      (note.asks ||= []).push({ question, answer: el.getAttribute('aria-checked') === 'true' });
+      continue;
+    }
+    if (el.matches(TM_NOTE_BODY)) {
+      if (el.parentElement?.closest(TM_NOTE_BODY)) continue;
+      const text = tmNoteText(el);
+      if (text) start(text);
+      continue;
+    }
+    // A <p> of its own, outside any body, is the date a note was left.
+    if (!el.closest(TM_NOTE_BODY) && !el.closest('[role="checkbox"]')) {
+      time = oneLine(el.textContent) || null;
+      note = null;
+    }
+  }
+  if (notes.some((n) => n.text)) return notes.filter((n) => n.text);
+
+  // Nothing marked up as a body: whatever the panel says, less its boxes.
+  const copy = panel.cloneNode(true);
+  for (const el of copy.querySelectorAll('[role="checkbox"], button, svg')) el.remove();
+  const text = blockText(copy);
+  if (!text || TM_NO_NOTES.test(oneLine(text))) return [];
+  const only = { text };
+  if (notes[0]?.asks) only.asks = notes[0].asks;
+  return [only];
+}
+
+// Both tabs, whichever one is showing. A tab not showing usually keeps its
+// panel in the page, hidden; where it does not, the tab is opened, read, and
+// the one that was showing is put back.
+async function tmReadOverview() {
+  const section = document.querySelector(TM_OVERVIEW);
+  if (!section) return null;
+
+  const tabs = Array.from(section.querySelectorAll('[role="tab"]'));
+  const panelOf = (tab) => {
+    const id = tab.getAttribute('aria-controls');
+    const panel = id && document.getElementById(id);
+    return panel && panel.childElementCount ? panel : null;
+  };
+  const showing = tabs.find((t) => t.getAttribute('aria-selected') === 'true') || null;
+  const out = [];
+  let moved = false;
+
+  for (const tab of tabs) {
+    const title = oneLine(tab.textContent);
+    if (!title) continue;
+    let panel = panelOf(tab);
+    if (!panel && tab !== showing && tab.getAttribute('aria-disabled') !== 'true') {
+      tab.click();
+      moved = true;
+      panel = await until(() => panelOf(tab), { timeout: 2500 });
+      await wait(settleMs);
+    }
+    out.push({ title, notes: panel ? tmPanelNotes(panel) : [] });
+  }
+  if (moved && showing) {
+    showing.click();
+    await wait(settleMs);
+  }
+
+  // A section with no tabs in it is read as one set of notes.
+  if (!out.length) {
+    const notes = tmPanelNotes(section.querySelector('[role="tabpanel"]') || section);
+    if (notes.length) out.push({ title: oneLine(section.querySelector('h3')?.textContent) || 'Feedback', notes });
+  }
+  return out;
+}
+
 /* ---------- catching ---------- */
 
 function tmReadQuestion({ n, el }) {
@@ -330,6 +442,7 @@ async function readTelemanus(options = {}) {
     || readUid();
   const videos = tmReadVideos();
   const assets = tmReadAssets();
+  const feedback = await tmReadOverview();
   const groups = tmQuestionGroups();
   const timeLeft = oneLine(document.querySelector('[data-testid="task-expiration-timer"]')?.textContent) || null;
   const lastSaved = (document.body.innerText || document.body.textContent || '')
@@ -342,6 +455,8 @@ async function readTelemanus(options = {}) {
   if (lastSaved) content.lastSaved = lastSaved;
   content.videos = videos;
   content.assets = assets;
+  // Only a task sent back has any; a first pass is left without the key.
+  if (feedback) content.feedback = feedback;
 
   const data = { project: 'telemanus' };
   if (uid) data.uid = uid;
@@ -393,6 +508,8 @@ async function readTelemanus(options = {}) {
       form: withForm,
       videos: videos.length,
       assets: assets.length,
+      revised: !!feedback,
+      feedback: (feedback || []).filter((f) => f.notes.length).map((f) => f.title),
       questions: groups.length,
       written
     }

@@ -2,7 +2,8 @@
 
    Video question tasks: a video, the Assets sidebar with an AI-generated idea
    per question, and a form of five multiple-choice questions. The Content
-   block opens with the video link and the assets; the form follows only when
+   block opens with the video link and the assets, then - on a task sent back
+   for revision - the eval and reviewer feedback; the form follows only when
    the catch was asked to include it. The Answers box is what gets edited and
    written back.
 
@@ -44,6 +45,18 @@ function renderTelemanus(c) {
     const rows = Object.entries(a.fields).map(([k, v]) => `${k}: ${v || '(empty)'}`);
     return `${a.title}\n${tmIndent(rows.join('\n'))}`;
   }).join('\n'));
+
+  // What a task sent back was sent back with: a part per tab, the automatic
+  // evaluation and the reviewer, each note under its date.
+  for (const tab of c.feedback || []) {
+    part(tab.title, tab.notes.length ? tab.notes.map((n) => {
+      const lines = [];
+      if (n.time) lines.push(`[${n.time}]`);
+      if (n.text) lines.push(n.text);
+      for (const a of n.asks || []) lines.push(`${a.question} ${a.answer ? 'Yes (ticked)' : 'No (not ticked)'}`);
+      return lines.join('\n');
+    }).join('\n\n') : '(none on this task)');
+  }
 
   const f = c.form;
   if (!f) return out.join('\n').trim();
@@ -94,6 +107,11 @@ function telemanusCatchStatus(data, meta) {
   if (meta.assets) bits.push(`${meta.assets} asset${meta.assets === 1 ? '' : 's'}`);
   if (meta.form) bits.push(`the form, ${meta.written} of ${meta.questions} question${meta.questions === 1 ? '' : 's'} written`);
   let msg = `Caught ${bits.join(', ')}.`;
+  if (meta.revised) {
+    msg += meta.feedback.length
+      ? `\nSent back for revision — caught: ${meta.feedback.join(', ')}.`
+      : '\nSent back for revision, with no feedback written on it.';
+  }
   if (!meta.form) msg += '\nThe submit form was left out — tick "Include the submit form" to catch it too.';
   else if (!meta.questions) msg += '\nNo questions on this page — the form is on the page after the instructions.';
   const ok = meta.videos > 0 && (!meta.form || meta.questions > 0);
